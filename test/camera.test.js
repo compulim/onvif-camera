@@ -160,3 +160,15 @@ test('audio encoder settings are configurable', async t => {
   assert.equal(Number(options.BitrateList.Items), 64);
   assert.equal(Number(options.SampleRateList.Items), 44);
 });
+
+test('G.711 audio encoding can be advertised with telephony defaults', async t => {
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_ENCODING: 'MP3' }), /CAMERA_AUDIO_ENCODING/);
+  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_ENCODING: 'g711' }));
+  const encoder = (await call('GetProfiles')).body.GetProfilesResponse.Profiles.AudioEncoderConfiguration;
+  assert.equal(encoder.Encoding, 'G711');
+  assert.equal(Number(encoder.Bitrate), 64);
+  assert.equal(Number(encoder.SampleRate), 8);
+  assert.equal(Number((await call('GetAudioSources')).body.GetAudioSourcesResponse.AudioSources.Channels), 1);
+  const options = (await call('GetAudioEncoderConfigurationOptions')).body.GetAudioEncoderConfigurationOptionsResponse.Options;
+  assert.equal(options.Encoding, 'G711');
+});

@@ -1,5 +1,8 @@
 logLevel: info
 logDestinations: [stdout]
+# A 20 Mbit/s keyframe is several hundred packets; the default queue (512) can
+# overflow on bursts and drop packets for readers, corrupting I-frames.
+writeQueueSize: 4096
 
 rtsp: true
 rtspAddress: :8554
