@@ -1,5 +1,5 @@
 [Unit]
-Description=RTSP server for Raspberry Pi ONVIF camera
+Description=SRT/RTSP media server for Raspberry Pi ONVIF camera
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=0

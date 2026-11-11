@@ -28,12 +28,12 @@ function audioSourceConfig() {
   return '<tt:AudioSourceConfiguration token="audio_source"><tt:Name>Audio source</tt:Name><tt:UseCount>1</tt:UseCount><tt:SourceToken>audio</tt:SourceToken></tt:AudioSourceConfiguration>';
 }
 
-function audioEncoderConfig() {
-  return '<tt:AudioEncoderConfiguration token="audio_encoder"><tt:Name>AAC</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>AAC</tt:Encoding><tt:Bitrate>64</tt:Bitrate><tt:SampleRate>48</tt:SampleRate><tt:Multicast><tt:Address><tt:Type>IPv4</tt:Type><tt:IPv4Address>0.0.0.0</tt:IPv4Address></tt:Address><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:AudioEncoderConfiguration>';
+function audioEncoderConfig(config) {
+  return `<tt:AudioEncoderConfiguration token="audio_encoder"><tt:Name>AAC</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>AAC</tt:Encoding><tt:Bitrate>${config.audioBitrate}</tt:Bitrate><tt:SampleRate>${config.audioSampleRate}</tt:SampleRate><tt:Multicast><tt:Address><tt:Type>IPv4</tt:Type><tt:IPv4Address>0.0.0.0</tt:IPv4Address></tt:Address><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:AudioEncoderConfiguration>`;
 }
 
 function profile(config) {
-  return `<trt:Profiles token="${profileToken}" fixed="true"><tt:Name>${x(config.name)}</tt:Name>${videoSourceConfig(config)}${config.audio ? audioSourceConfig() : ''}${videoEncoderConfig(config)}${config.audio ? audioEncoderConfig() : ''}</trt:Profiles>`;
+  return `<trt:Profiles token="${profileToken}" fixed="true"><tt:Name>${x(config.name)}</tt:Name>${videoSourceConfig(config)}${config.audio ? audioSourceConfig() : ''}${videoEncoderConfig(config)}${config.audio ? audioEncoderConfig(config) : ''}</trt:Profiles>`;
 }
 
 function capabilities(config) {
@@ -56,7 +56,7 @@ function response(operation, args, config, media) {
       VideoSource: { token: 'video_source', xml: videoSourceConfig(config) },
       VideoEncoder: { token: 'video_encoder', xml: videoEncoderConfig(config) },
       AudioSource: { token: 'audio_source', xml: config.audio ? audioSourceConfig() : '' },
-      AudioEncoder: { token: 'audio_encoder', xml: config.audio ? audioEncoderConfig() : '' }
+      AudioEncoder: { token: 'audio_encoder', xml: config.audio ? audioEncoderConfig(config) : '' }
     };
     for (const [kind, value] of Object.entries(configurations)) {
       if (operation === `Get${kind}Configuration`) {
@@ -91,7 +91,7 @@ function response(operation, args, config, media) {
       case 'GetAudioSourceConfigurations':
         return wrap(config.audio ? audioSourceConfig().replaceAll('tt:AudioSourceConfiguration', 'trt:Configurations') : '');
       case 'GetAudioEncoderConfigurations':
-        return wrap(config.audio ? audioEncoderConfig().replaceAll('tt:AudioEncoderConfiguration', 'trt:Configurations') : '');
+        return wrap(config.audio ? audioEncoderConfig(config).replaceAll('tt:AudioEncoderConfiguration', 'trt:Configurations') : '');
       case 'GetVideoEncoderConfigurationOptions':
         if (args?.ConfigurationToken !== undefined && args.ConfigurationToken !== 'video_encoder') {
           return fault('NoConfig', 'Unknown configuration token');
@@ -101,7 +101,7 @@ function response(operation, args, config, media) {
         if (args?.ConfigurationToken !== undefined && args.ConfigurationToken !== 'audio_encoder') {
           return fault('NoConfig', 'Unknown configuration token');
         }
-        return wrap(config.audio ? '<trt:Options><tt:Encoding>AAC</tt:Encoding><tt:BitrateList><tt:Items>64</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>48</tt:Items></tt:SampleRateList></trt:Options>' : '');
+        return wrap(config.audio ? `<trt:Options><tt:Encoding>AAC</tt:Encoding><tt:BitrateList><tt:Items>${config.audioBitrate}</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>${config.audioSampleRate}</tt:Items></tt:SampleRateList></trt:Options>` : '');
       case 'GetServiceCapabilities':
         return wrap('<trt:Capabilities SnapshotUri="false" Rotation="false" VideoSourceMode="false" OSD="false"><trt:ProfileCapabilities MaximumNumberOfProfiles="1"/><trt:StreamingCapabilities RTPMulticast="false" RTP_TCP="true" RTP_RTSP_TCP="true" NonAggregateControl="false"/></trt:Capabilities>');
       default: return fault('ActionNotSupported', 'This read-only camera does not support this operation');

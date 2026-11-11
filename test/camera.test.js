@@ -59,6 +59,8 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   assert.equal(profile.VideoEncoderConfiguration.Encoding, 'H264');
   assert.equal(profile.VideoEncoderConfiguration.Resolution.Width, '1280');
   assert.equal(profile.AudioEncoderConfiguration.Encoding, 'AAC');
+  assert.equal(Number(profile.AudioEncoderConfiguration.Bitrate), 128);
+  assert.equal(Number(profile.AudioEncoderConfiguration.SampleRate), 48);
   const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
   assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.20:8554/camera');
   assert.equal((await call('GetProfile', '<trt:ProfileToken>missing</trt:ProfileToken>')).status, 500);
@@ -146,4 +148,12 @@ test('WS-Discovery correlates probes, filters scopes/types and advertises correc
   assert.match(match.Envelope.Body.ProbeMatches.ProbeMatch.EndpointReference.Address, /^urn:uuid:/);
   assert.ok(parseXml(discoveryMessage(config, 'Hello')).Envelope.Body.Hello);
   assert.ok(parseXml(discoveryMessage(config, 'Bye')).Envelope.Body.Bye);
+});
+
+test('audio encoder settings are configurable', async t => {
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '0' }), /CAMERA_AUDIO_BITRATE/);
+  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '64', CAMERA_AUDIO_SAMPLE_RATE: '44' }));
+  const options = (await call('GetAudioEncoderConfigurationOptions')).body.GetAudioEncoderConfigurationOptionsResponse.Options;
+  assert.equal(Number(options.BitrateList.Items), 64);
+  assert.equal(Number(options.SampleRateList.Items), 44);
 });
