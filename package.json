@@ -1,0 +1,20 @@
+{
+  "name": "rpi-onvif-camera",
+  "version": "1.0.0",
+  "description": "Raspberry Pi ONVIF camera bridge for FFmpeg and mpv",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "check": "node --check src/index.js && node --check src/config.js && node --check src/soap.js && node --check src/camera.js && node --check src/discovery.js && node --check src/ingest.js"
+  },
+  "keywords": [],
+  "author": "",
+  "dependencies": {
+    "fast-xml-parser": "5.12.0"
+  }
+}

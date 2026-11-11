@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { once } from 'node:events';
+import { test } from 'node:test';
+import { createCameraServer } from '../src/camera.js';
+import { loadConfig } from '../src/config.js';
+import { discoveryMessage, matchesProbe } from '../src/discovery.js';
+import { authorized, escapeXml, parseXml } from '../src/soap.js';
+
+const config = loadConfig({ CAMERA_ADDRESS: '192.168.1.20', CAMERA_PLAYER: 'external' });
+
+function request(operation, body = '', header = '') {
+  return `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:trt="http://www.onvif.org/ver10/media/wsdl"><s:Header>${header}</s:Header><s:Body><trt:${operation}>${body}</trt:${operation}></s:Body></s:Envelope>`;
+}
+
+async function serve(t, options = config) {
+  const server = createCameraServer(options).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  return async (operation, body = '', path = 'media', header = '') => {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/onvif/${path}_service`, {
+      method: 'POST', body: request(operation, body, header)
+    });
+    const xml = await res.text();
+    return { status: res.status, xml, body: parseXml(xml).Envelope.Body };
+  };
+}
+
+test('configuration validates required settings and has a stable endpoint identity', () => {
+  assert.throws(() => loadConfig({}), /CAMERA_ADDRESS/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: '127.0.0.1' }), /LAN/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address }), /CAMERA_SOURCE/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PLAYER: 'shell' }), /CAMERA_PLAYER/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PLAYER: 'external', CAMERA_PORT: '0' }), /CAMERA_PORT/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
+  assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PLAYER: 'external' }).uuid);
+});
+
+test('device endpoints advertise only implemented services and LAN URLs', async t => {
+  const call = await serve(t);
+  const info = await call('GetDeviceInformation', '', 'device');
+  assert.equal(info.status, 200);
+  assert.equal(info.body.GetDeviceInformationResponse.Model, 'Raspberry Pi');
+  const capabilities = await call('GetCapabilities', '', 'device');
+  assert.equal(capabilities.body.GetCapabilitiesResponse.Capabilities.Media.XAddr,
+    'http://192.168.1.20:8000/onvif/media_service');
+  assert.equal(capabilities.body.GetCapabilitiesResponse.Capabilities.PTZ, undefined);
+  const services = await call('GetServices', '', 'device');
+  assert.equal(services.body.GetServicesResponse.Service.length, 2);
+  const clock = await call('GetSystemDateAndTime', '', 'device');
+  assert.equal(Number(clock.body.GetSystemDateAndTimeResponse.SystemDateAndTime.UTCDateTime.Date.Year),
+    new Date().getUTCFullYear());
+});
+
+test('media profile and URI describe the configured H264/AAC stream', async t => {
+  const call = await serve(t);
+  const profiles = await call('GetProfiles');
+  assert.equal(profiles.status, 200);
+  const profile = profiles.body.GetProfilesResponse.Profiles;
+  assert.equal(profile['@_token'], 'main');
+  assert.equal(profile.VideoEncoderConfiguration.Encoding, 'H264');
+  assert.equal(profile.VideoEncoderConfiguration.Resolution.Width, '1280');
+  assert.equal(profile.AudioEncoderConfiguration.Encoding, 'AAC');
+  const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
+  assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.20:8554/camera');
+  assert.equal((await call('GetProfile', '<trt:ProfileToken>missing</trt:ProfileToken>')).status, 500);
+  assert.equal((await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Multicast</Stream></trt:StreamSetup>')).status, 500);
+  assert.equal((await call('SetVideoEncoderConfiguration')).status, 500);
+  assert.equal((await call('GetProfile')).status, 500);
+  const encoder = await call('GetVideoEncoderConfiguration', '<trt:ConfigurationToken>video_encoder</trt:ConfigurationToken>');
+  assert.equal(encoder.body.GetVideoEncoderConfigurationResponse.Configuration.Encoding, 'H264');
+  assert.equal((await call('GetVideoEncoderConfiguration', '<trt:ConfigurationToken>missing</trt:ConfigurationToken>')).status, 500);
+  const compatible = await call('GetCompatibleVideoEncoderConfigurations', '<trt:ProfileToken>main</trt:ProfileToken>');
+  assert.equal(compatible.body.GetCompatibleVideoEncoderConfigurationsResponse.Configurations['@_token'], 'video_encoder');
+  const options = await call('GetVideoEncoderConfigurationOptions');
+  assert.equal(options.body.GetVideoEncoderConfigurationOptionsResponse.Options.H264.ResolutionsAvailable.Width, '1280');
+});
+
+test('video-only profiles omit audio and XML-escape configured names', async t => {
+  const call = await serve(t, { ...config, audio: false, name: 'Camera <A> & "B"' });
+  const profiles = await call('GetProfiles');
+  assert.match(profiles.xml, /Camera &lt;A&gt; &amp; &quot;B&quot;/);
+  assert.equal(profiles.body.GetProfilesResponse.Profiles.Name, 'Camera <A> & "B"');
+  assert.equal(profiles.body.GetProfilesResponse.Profiles.AudioEncoderConfiguration, undefined);
+  assert.equal((await call('GetAudioSources')).body.GetAudioSourcesResponse, '');
+});
+
+test('malformed, entity-bearing, oversized requests and incorrect paths are rejected', async t => {
+  const server = createCameraServer(config).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  for (const body of ['<broken', '<!DOCTYPE a [<!ENTITY x SYSTEM "file:///etc/passwd">]><a>&x;</a>', request('GetProfiles') + request('GetProfiles')]) {
+    const res = await fetch(`${base}/onvif/media_service`, { method: 'POST', body });
+    assert.equal(res.status, 400);
+    await res.text();
+  }
+  const oversized = await fetch(`${base}/onvif/media_service`, { method: 'POST', body: 'x'.repeat(65537) });
+  assert.equal(oversized.status, 413);
+  await oversized.text();
+  assert.equal((await fetch(`${base}/health`)).status, 200);
+  assert.equal((await fetch(`${base}/unknown`)).status, 404);
+  assert.equal((await fetch(`${base}/onvif/device_service`)).status, 405);
+});
+
+function digestHeader(password, nonce, created, username = 'camera') {
+  const digest = createHash('sha1').update(Buffer.from(nonce, 'base64')).update(created).update(password).digest('base64');
+  return `<Security><UsernameToken><Username>${escapeXml(username)}</Username><Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${digest}</Password><Nonce>${nonce}</Nonce><Created>${created}</Created></UsernameToken></Security>`;
+}
+
+test('optional UsernameToken digest authentication rejects replay, bad passwords and stale timestamps', async t => {
+  const authenticated = { ...config, username: 'camera', password: 'unit-test-only' };
+  const call = await serve(t, authenticated);
+  assert.equal((await call('GetProfiles')).status, 401);
+  assert.equal((await call('GetSystemDateAndTime', '', 'device')).status, 200);
+  const nonce = Buffer.from('unique-test-nonce').toString('base64');
+  const header = digestHeader(authenticated.password, nonce, new Date().toISOString());
+  assert.equal((await call('GetProfiles', '', 'media', header)).status, 200);
+  assert.equal((await call('GetProfiles', '', 'media', header)).status, 401);
+  const unpaddedNonce = header.replace(`<Nonce>${nonce}</Nonce>`, `<Nonce>${nonce.replace(/=+$/, '')}</Nonce>`);
+  assert.equal((await call('GetProfiles', '', 'media', unpaddedNonce)).status, 401);
+  const stale = digestHeader(authenticated.password, nonce, new Date(Date.now() - 600000).toISOString());
+  assert.equal(authorized(parseXml(`<Header>${stale}</Header>`).Header, authenticated, new Map()), false);
+  const bad = digestHeader('incorrect', nonce, new Date().toISOString());
+  assert.equal((await call('GetProfiles', '', 'media', bad)).status, 401);
+});
+
+test('authentication decodes predefined and numeric XML escapes without allowing DTDs', async t => {
+  const authenticated = { ...config, username: 'cam&operator', password: 'unit-test-only' };
+  const call = await serve(t, authenticated);
+  const header = digestHeader(authenticated.password,
+    Buffer.from('escaped-username-nonce').toString('base64'), new Date().toISOString(), authenticated.username);
+  assert.equal((await call('GetProfiles', '', 'media', header)).status, 200);
+  assert.equal(parseXml('<value>&amp;&lt;&gt;&quot;&apos;&#38;&#x26;</value>').value, '&<>"\'&&');
+  assert.throws(() => parseXml('<!DOCTYPE value [<!ENTITY x "expanded">]><value>&x;</value>'), /Invalid XML/);
+});
+
+test('WS-Discovery correlates probes, filters scopes/types and advertises correct metadata', () => {
+  const probe = (body = '') => `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Header><MessageID>urn:uuid:test</MessageID></s:Header><s:Body><Probe>${body}</Probe></s:Body></s:Envelope>`;
+  assert.equal(matchesProbe(probe(), config), 'urn:uuid:test');
+  assert.equal(matchesProbe(probe('<Types>dn:NetworkVideoTransmitter</Types>'), config), 'urn:uuid:test');
+  assert.equal(matchesProbe(probe('<Types>dn:Printer</Types>'), config), undefined);
+  assert.equal(matchesProbe(probe('<Scopes>onvif://www.onvif.org/hardware/Other</Scopes>'), config), undefined);
+  assert.equal(matchesProbe(probe('<Scopes>onvif://www.onvif.org/hardware</Scopes>'), config), 'urn:uuid:test');
+  const match = parseXml(discoveryMessage(config, 'ProbeMatches', 'urn:uuid:test'));
+  assert.equal(match.Envelope.Header.RelatesTo, 'urn:uuid:test');
+  assert.equal(match.Envelope.Body.ProbeMatches.ProbeMatch.XAddrs, 'http://192.168.1.20:8000/onvif/device_service');
+  assert.match(match.Envelope.Body.ProbeMatches.ProbeMatch.EndpointReference.Address, /^urn:uuid:/);
+  assert.ok(parseXml(discoveryMessage(config, 'Hello')).Envelope.Body.Hello);
+  assert.ok(parseXml(discoveryMessage(config, 'Bye')).Envelope.Body.Bye);
+});
