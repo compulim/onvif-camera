@@ -75,10 +75,17 @@ sudo systemctl restart rpi-onvif-mediamtx.service rpi-onvif-camera.service
 
 ### Publishing the stream
 
-Publish to the `camera` path, e.g. `rtsp://PI_ADDRESS:8554/camera`. MediaMTX
-permits publishing **only from loopback** by default and rejects a second
-publisher. To accept a publisher on another host, add its IP address to the
-`publish` user's `ips` list in `/etc/rpi-onvif-camera/mediamtx.yml` and restart
+Publish from another device on the LAN to the `camera` path, for example:
+
+```sh
+ffmpeg -re -i input.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://PI_ADDRESS:8554/camera
+```
+
+The supplied MediaMTX configuration accepts publishers from loopback and private
+IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and rejects a second
+concurrent publisher. **Narrow the `publish` user's `ips` list** in
+`/etc/rpi-onvif-camera/mediamtx.yml` to the publisher's address (for example,
+`192.168.1.50/32`) so other LAN hosts cannot take over the stream, then restart
 MediaMTX. It accepts both TCP and UDP RTSP clients.
 
 ## Connect and troubleshoot
