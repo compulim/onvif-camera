@@ -83,7 +83,7 @@ function response(operation, args, config, media) {
       case 'GetVideoSources':
         return wrap(`<trt:VideoSources token="video"><tt:Framerate>${config.fps}</tt:Framerate><tt:Resolution><tt:Width>${config.width}</tt:Width><tt:Height>${config.height}</tt:Height></tt:Resolution></trt:VideoSources>`);
       case 'GetAudioSources':
-        return wrap(config.audio ? '<trt:AudioSources token="audio"><tt:Channels>1</tt:Channels></trt:AudioSources>' : '');
+        return wrap(config.audio ? `<trt:AudioSources token="audio"><tt:Channels>${config.audioChannels}</tt:Channels></trt:AudioSources>` : '');
       case 'GetVideoSourceConfigurations':
         return wrap(videoSourceConfig(config).replaceAll('tt:VideoSourceConfiguration', 'trt:Configurations'));
       case 'GetVideoEncoderConfigurations':
