@@ -58,13 +58,14 @@ or shell substitutions.
 | `CAMERA_FPS`, `CAMERA_BITRATE` | `15`, `2000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
 | `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48` | Advertised AAC bitrate (kbit/s) and sample rate (kHz) |
+| `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
 | `CAMERA_PORT`, `CAMERA_RTSP_PORT` | `8000`, `8554` | SOAP and RTSP TCP ports |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
 | `CAMERA_USERNAME`, `CAMERA_PASSWORD` | empty | Optional ONVIF UsernameToken digest credentials; set both |
 
 The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values.
-Keep them aligned with what is published (H.264 Main video; optional mono AAC,
+Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
 16-bit 48 kHz source encoded as 128 kbit/s AAC by default).
 
 Changing ports requires matching changes to `rtspAddress` (or `srtAddress` for
@@ -87,7 +88,7 @@ To loop an MP4 and re-encode it to match the advertised profile (set
 `CAMERA_WIDTH=1920`, `CAMERA_HEIGHT=1080`, `CAMERA_FPS=30` to match):
 
 ```sh
-ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 2000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 1 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
+ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 2000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
 The supplied MediaMTX configuration accepts publishers from loopback and private
@@ -96,7 +97,7 @@ concurrent publisher. **Narrow the `publish` user's `ips` list** in
 `/etc/rpi-onvif-camera/mediamtx.yml` to the publisher's address (for example,
 `192.168.1.50/32`) so other LAN hosts cannot take over the stream, then restart
 MediaMTX. It accepts both TCP and UDP RTSP clients. If audio is published with
-different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`.
+different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`/`CAMERA_AUDIO_CHANNELS`.
 
 ## Connect and troubleshoot
 
