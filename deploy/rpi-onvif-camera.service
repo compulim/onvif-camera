@@ -1,5 +1,5 @@
 [Unit]
-Description=Raspberry Pi ONVIF camera and media publisher
+Description=Raspberry Pi ONVIF camera emulator
 Wants=network-online.target rpi-onvif-mediamtx.service
 After=network-online.target rpi-onvif-mediamtx.service
 StartLimitIntervalSec=0

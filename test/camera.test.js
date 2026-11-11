@@ -7,7 +7,7 @@ import { loadConfig } from '../src/config.js';
 import { discoveryMessage, matchesProbe } from '../src/discovery.js';
 import { authorized, escapeXml, parseXml } from '../src/soap.js';
 
-const config = loadConfig({ CAMERA_ADDRESS: '192.168.1.20', CAMERA_PLAYER: 'external' });
+const config = loadConfig({ CAMERA_ADDRESS: '192.168.1.20' });
 
 function request(operation, body = '', header = '') {
   return `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:trt="http://www.onvif.org/ver10/media/wsdl"><s:Header>${header}</s:Header><s:Body><trt:${operation}>${body}</trt:${operation}></s:Body></s:Envelope>`;
@@ -29,11 +29,9 @@ async function serve(t, options = config) {
 test('configuration validates required settings and has a stable endpoint identity', () => {
   assert.throws(() => loadConfig({}), /CAMERA_ADDRESS/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: '127.0.0.1' }), /LAN/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address }), /CAMERA_SOURCE/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PLAYER: 'shell' }), /CAMERA_PLAYER/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PLAYER: 'external', CAMERA_PORT: '0' }), /CAMERA_PORT/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '0' }), /CAMERA_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
-  assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PLAYER: 'external' }).uuid);
+  assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address }).uuid);
 });
 
 test('device endpoints advertise only implemented services and LAN URLs', async t => {

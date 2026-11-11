@@ -19,14 +19,6 @@ function loadConfig(env = process.env) {
   if (Boolean(username) !== Boolean(password)) {
     throw new Error('Set both CAMERA_USERNAME and CAMERA_PASSWORD, or neither');
   }
-  const source = env.CAMERA_SOURCE || '';
-  const player = env.CAMERA_PLAYER || 'ffmpeg';
-  if (!['ffmpeg', 'mpv', 'external'].includes(player)) {
-    throw new Error('CAMERA_PLAYER must be ffmpeg, mpv, or external');
-  }
-  if (player !== 'external' && !source) {
-    throw new Error('CAMERA_SOURCE is required unless CAMERA_PLAYER=external');
-  }
   // Keep the endpoint identity stable across service restarts.
   const identity = createHash('sha256').update(env.CAMERA_ID || address).digest('hex');
   return {
@@ -43,8 +35,6 @@ function loadConfig(env = process.env) {
     discovery: env.CAMERA_DISCOVERY !== 'false',
     username,
     password,
-    source,
-    player,
     uuid: `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-8${identity.slice(17, 20)}-${identity.slice(20, 32)}`
   };
 }
