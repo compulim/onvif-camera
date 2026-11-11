@@ -125,6 +125,32 @@ Use an NVR or open the RTSP URL directly (for example, VLC or `ffmpeg`) to recor
 VLC) or check the MediaMTX log to verify the stream is being published.
 Keep the Pi's clock synchronized for WS-Security timestamp validation.
 
+### Stuttering or corrupted frames
+
+If the source file plays fine locally but the RTSP stream stutters and FFmpeg logs
+`RTP: missed N packets`, `max delay reached. need to consume packet`, or
+`concealing ... errors in I frame`, RTP packets are being lost on the way to the
+viewer. FFmpeg (and many players) read RTSP over **UDP** by default; at 20 Mbit/s
+each keyframe is a burst of hundreds of UDP packets that easily overflows the
+client's socket buffer (especially on Windows) or a Wi-Fi link. Read over TCP
+instead:
+
+```sh
+ffplay -rtsp_transport tcp rtsp://PI_ADDRESS:8554/camera
+ffmpeg -rtsp_transport tcp -i rtsp://PI_ADDRESS:8554/camera -c copy out.mkv
+```
+
+In VLC, enable *Preferences → Input/Codecs → Live555 stream transport → RTP over
+RTSP (TCP)*; in an NVR, choose TCP as the RTSP transport. If it still stutters:
+
+- Check `journalctl -u rpi-onvif-mediamtx` for `reader is too slow` (raise
+  `writeQueueSize` in `/etc/rpi-onvif-camera/mediamtx.yml`) or SRT packet-loss
+  messages from the publisher. For lossy publisher links, add a larger SRT
+  latency to the publish URL, for example `&latency=500000` (microseconds, in
+  FFmpeg).
+- Lower `CAMERA_BITRATE` and the publisher's `-b:v` (for example, 8000k) if the
+  network, especially Wi-Fi, cannot sustain 20 Mbit/s bursts.
+
 ### Security
 
 The supplied configuration allows anonymous ONVIF queries and RTSP viewing:
