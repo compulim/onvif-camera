@@ -57,8 +57,9 @@ or shell substitutions.
 | `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1920`, `1080` | Advertised resolution |
 | `CAMERA_FPS`, `CAMERA_BITRATE` | `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
-| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48` | Advertised AAC bitrate (kbit/s) and sample rate (kHz) |
-| `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
+| `CAMERA_AUDIO_ENCODING` | `AAC` | Advertised audio encoding: `AAC` or `G711` |
+| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48` (G711: `64`, `8`) | Advertised audio bitrate (kbit/s) and sample rate (kHz) |
+| `CAMERA_AUDIO_CHANNELS` | `2` (G711: `1`) | Advertised audio channels: `1` (mono) or `2` (stereo) |
 | `CAMERA_PORT`, `CAMERA_RTSP_PORT` | `8000`, `8554` | SOAP and RTSP TCP ports |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
@@ -66,7 +67,7 @@ or shell substitutions.
 
 The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values.
 Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
-16-bit 48 kHz source encoded as 128 kbit/s AAC by default).
+16-bit 48 kHz source encoded as 128 kbit/s AAC by default, or G.711).
 
 Changing ports requires matching changes to `rtspAddress` (or `srtAddress` for
 the SRT publishing port, default UDP 8890) in MediaMTX and your firewall. Restart after configuration or network-address changes:
@@ -91,13 +92,23 @@ To loop an MP4 and re-encode it to match the default advertised profile
 ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 20000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
+Many NVRs only play G.711 audio (ONVIF Profile S requires only G.711). For those,
+set `CAMERA_AUDIO_ENCODING=G711` and publish G.711 µ-law, 8 kHz mono, over **RTSP**
+instead, because MPEG-TS over SRT cannot carry G.711:
+
+```sh
+ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 5000k -g 30 -bf 0 -c:a pcm_mulaw -ar 8000 -ac 1 -f rtsp -rtsp_transport tcp "rtsp://PI_ADDRESS:8554/camera"
+```
+
+RTSP publishing uses TCP 8554, so allow it from the publisher too.
+
 The supplied MediaMTX configuration accepts publishers from loopback and private
 IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and rejects a second
 concurrent publisher. **Narrow the `publish` user's `ips` list** in
 `/etc/rpi-onvif-camera/mediamtx.yml` to the publisher's address (for example,
 `192.168.1.50/32`) so other LAN hosts cannot take over the stream, then restart
 MediaMTX. It accepts both TCP and UDP RTSP clients. If audio is published with
-different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`/`CAMERA_AUDIO_CHANNELS`.
+different settings, update `CAMERA_AUDIO_ENCODING`/`CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`/`CAMERA_AUDIO_CHANNELS`.
 
 ## Connect and troubleshoot
 

@@ -29,7 +29,7 @@ function audioSourceConfig() {
 }
 
 function audioEncoderConfig(config) {
-  return `<tt:AudioEncoderConfiguration token="audio_encoder"><tt:Name>AAC</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>AAC</tt:Encoding><tt:Bitrate>${config.audioBitrate}</tt:Bitrate><tt:SampleRate>${config.audioSampleRate}</tt:SampleRate><tt:Multicast><tt:Address><tt:Type>IPv4</tt:Type><tt:IPv4Address>0.0.0.0</tt:IPv4Address></tt:Address><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:AudioEncoderConfiguration>`;
+  return `<tt:AudioEncoderConfiguration token="audio_encoder"><tt:Name>${config.audioEncoding}</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>${config.audioEncoding}</tt:Encoding><tt:Bitrate>${config.audioBitrate}</tt:Bitrate><tt:SampleRate>${config.audioSampleRate}</tt:SampleRate><tt:Multicast><tt:Address><tt:Type>IPv4</tt:Type><tt:IPv4Address>0.0.0.0</tt:IPv4Address></tt:Address><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:AudioEncoderConfiguration>`;
 }
 
 function profile(config) {
@@ -101,7 +101,7 @@ function response(operation, args, config, media) {
         if (args?.ConfigurationToken !== undefined && args.ConfigurationToken !== 'audio_encoder') {
           return fault('NoConfig', 'Unknown configuration token');
         }
-        return wrap(config.audio ? `<trt:Options><tt:Encoding>AAC</tt:Encoding><tt:BitrateList><tt:Items>${config.audioBitrate}</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>${config.audioSampleRate}</tt:Items></tt:SampleRateList></trt:Options>` : '');
+        return wrap(config.audio ? `<trt:Options><tt:Encoding>${config.audioEncoding}</tt:Encoding><tt:BitrateList><tt:Items>${config.audioBitrate}</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>${config.audioSampleRate}</tt:Items></tt:SampleRateList></trt:Options>` : '');
       case 'GetServiceCapabilities':
         return wrap('<trt:Capabilities SnapshotUri="false" Rotation="false" VideoSourceMode="false" OSD="false"><trt:ProfileCapabilities MaximumNumberOfProfiles="1"/><trt:StreamingCapabilities RTPMulticast="false" RTP_TCP="true" RTP_RTSP_TCP="true" NonAggregateControl="false"/></trt:Capabilities>');
       default: return fault('ActionNotSupported', 'This read-only camera does not support this operation');
