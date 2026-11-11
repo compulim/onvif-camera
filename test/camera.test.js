@@ -57,7 +57,7 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   const profile = profiles.body.GetProfilesResponse.Profiles;
   assert.equal(profile['@_token'], 'main');
   assert.equal(profile.VideoEncoderConfiguration.Encoding, 'H264');
-  assert.equal(profile.VideoEncoderConfiguration.Resolution.Width, '1280');
+  assert.equal(profile.VideoEncoderConfiguration.Resolution.Width, '1920');
   assert.equal(profile.AudioEncoderConfiguration.Encoding, 'AAC');
   assert.equal(Number(profile.AudioEncoderConfiguration.Bitrate), 128);
   assert.equal(Number(profile.AudioEncoderConfiguration.SampleRate), 48);
@@ -74,7 +74,7 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   const compatible = await call('GetCompatibleVideoEncoderConfigurations', '<trt:ProfileToken>main</trt:ProfileToken>');
   assert.equal(compatible.body.GetCompatibleVideoEncoderConfigurationsResponse.Configurations['@_token'], 'video_encoder');
   const options = await call('GetVideoEncoderConfigurationOptions');
-  assert.equal(options.body.GetVideoEncoderConfigurationOptionsResponse.Options.H264.ResolutionsAvailable.Width, '1280');
+  assert.equal(options.body.GetVideoEncoderConfigurationOptionsResponse.Options.H264.ResolutionsAvailable.Width, '1920');
 });
 
 test('video-only profiles omit audio and XML-escape configured names', async t => {

@@ -54,8 +54,8 @@ or shell substitutions.
 | `CAMERA_ADDRESS` | required | LAN IPv4 address advertised to clients; never localhost |
 | `CAMERA_ID` | LAN address | Unique stable identity; set this to survive address changes |
 | `CAMERA_NAME` | Raspberry Pi Camera | Display name |
-| `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1280`, `720` | Advertised resolution |
-| `CAMERA_FPS`, `CAMERA_BITRATE` | `15`, `2000` | Advertised frame rate and video bitrate (kbit/s) |
+| `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1920`, `1080` | Advertised resolution |
+| `CAMERA_FPS`, `CAMERA_BITRATE` | `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
 | `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48` | Advertised AAC bitrate (kbit/s) and sample rate (kHz) |
 | `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
@@ -84,11 +84,11 @@ over UDP port 8890), which has lower overhead than RTSP publishing:
 ffmpeg -re -i input.mp4 -c copy -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
-To loop an MP4 and re-encode it to match the advertised profile (set
-`CAMERA_WIDTH=1920`, `CAMERA_HEIGHT=1080`, `CAMERA_FPS=30` to match):
+To loop an MP4 and re-encode it to match the default advertised profile
+(1920x1080 at 30 FPS, 20 Mbit/s):
 
 ```sh
-ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 2000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
+ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 20000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
 The supplied MediaMTX configuration accepts publishers from loopback and private
