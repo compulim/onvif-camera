@@ -81,6 +81,13 @@ Publish from another device on the LAN to the `camera` path, for example:
 ffmpeg -re -i input.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://PI_ADDRESS:8554/camera
 ```
 
+To loop an MP4 and re-encode it to match the advertised profile (set
+`CAMERA_WIDTH=1920`, `CAMERA_HEIGHT=1080`, `CAMERA_FPS=30` to match):
+
+```sh
+ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 2000k -g 30 -bf 0 -c:a aac -b:a 64k -ar 48000 -ac 1 -f rtsp -rtsp_transport tcp rtsp://PI_ADDRESS:8554/camera
+```
+
 The supplied MediaMTX configuration accepts publishers from loopback and private
 IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and rejects a second
 concurrent publisher. **Narrow the `publish` user's `ips` list** in
@@ -104,6 +111,11 @@ manually configure the device URL in that case. No privileged ports are needed.
 sudo journalctl -u rpi-onvif-camera -u rpi-onvif-mediamtx -f
 curl http://PI_ADDRESS:8000/health
 ```
+
+Windows 10/11 network camera support (for example, the Camera app) is video-only:
+it [does not support ONVIF audio streaming](https://learn.microsoft.com/windows-hardware/drivers/stream/network-cameras#unsupported-features),
+so recordings made through it have no sound even when the stream has AAC audio.
+Use an NVR or open the RTSP URL directly (for example, VLC or `ffmpeg`) to record audio.
 
 `/health` checks HTTP liveness only; open the RTSP URL in a client (for example,
 VLC) or check the MediaMTX log to verify the stream is being published.
