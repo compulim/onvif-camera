@@ -6,7 +6,8 @@ const parser = new XMLParser({
   removeNSPrefix: true,
   parseTagValue: false,
   trimValues: true,
-  processEntities: false
+  processEntities: true,
+  htmlEntities: true
 });
 
 function escapeXml(value) {
@@ -56,14 +57,17 @@ function authorized(header, config, usedNonces, now = Date.now()) {
   const type = token.Password?.['@_Type'] || '';
   // Digest only: never accept a plaintext password over HTTP.
   if (!type.endsWith('#PasswordDigest') || !nonce || !/^[A-Za-z0-9+/]+={0,2}$/.test(nonce)) return false;
+  const nonceBytes = Buffer.from(nonce, 'base64');
+  if (!nonceBytes.length) return false;
+  const nonceKey = nonceBytes.toString('base64');
   for (const [key, expires] of usedNonces) {
     if (expires <= now) usedNonces.delete(key);
   }
-  if (usedNonces.has(nonce) || usedNonces.size >= 10000) return false;
+  if (usedNonces.has(nonceKey) || usedNonces.size >= 10000) return false;
   const expected = createHash('sha1')
-    .update(Buffer.from(nonce, 'base64')).update(created).update(config.password).digest('base64');
+    .update(nonceBytes).update(created).update(config.password).digest('base64');
   if (!equal(text(token.Password), expected)) return false;
-  usedNonces.set(nonce, timestamp + 300000);
+  usedNonces.set(nonceKey, timestamp + 300000);
   return true;
 }
 

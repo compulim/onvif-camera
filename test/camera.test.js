@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { createCameraServer } from '../src/camera.js';
 import { loadConfig } from '../src/config.js';
 import { discoveryMessage, matchesProbe } from '../src/discovery.js';
-import { authorized, parseXml } from '../src/soap.js';
+import { authorized, escapeXml, parseXml } from '../src/soap.js';
 
 const config = loadConfig({ CAMERA_ADDRESS: '192.168.1.20', CAMERA_PLAYER: 'external' });
 
@@ -80,6 +80,7 @@ test('video-only profiles omit audio and XML-escape configured names', async t =
   const call = await serve(t, { ...config, audio: false, name: 'Camera <A> & "B"' });
   const profiles = await call('GetProfiles');
   assert.match(profiles.xml, /Camera &lt;A&gt; &amp; &quot;B&quot;/);
+  assert.equal(profiles.body.GetProfilesResponse.Profiles.Name, 'Camera <A> & "B"');
   assert.equal(profiles.body.GetProfilesResponse.Profiles.AudioEncoderConfiguration, undefined);
   assert.equal((await call('GetAudioSources')).body.GetAudioSourcesResponse, '');
 });
@@ -102,9 +103,9 @@ test('malformed, entity-bearing, oversized requests and incorrect paths are reje
   assert.equal((await fetch(`${base}/onvif/device_service`)).status, 405);
 });
 
-function digestHeader(password, nonce, created) {
+function digestHeader(password, nonce, created, username = 'camera') {
   const digest = createHash('sha1').update(Buffer.from(nonce, 'base64')).update(created).update(password).digest('base64');
-  return `<Security><UsernameToken><Username>camera</Username><Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${digest}</Password><Nonce>${nonce}</Nonce><Created>${created}</Created></UsernameToken></Security>`;
+  return `<Security><UsernameToken><Username>${escapeXml(username)}</Username><Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${digest}</Password><Nonce>${nonce}</Nonce><Created>${created}</Created></UsernameToken></Security>`;
 }
 
 test('optional UsernameToken digest authentication rejects replay, bad passwords and stale timestamps', async t => {
@@ -116,10 +117,22 @@ test('optional UsernameToken digest authentication rejects replay, bad passwords
   const header = digestHeader(authenticated.password, nonce, new Date().toISOString());
   assert.equal((await call('GetProfiles', '', 'media', header)).status, 200);
   assert.equal((await call('GetProfiles', '', 'media', header)).status, 401);
+  const unpaddedNonce = header.replace(`<Nonce>${nonce}</Nonce>`, `<Nonce>${nonce.replace(/=+$/, '')}</Nonce>`);
+  assert.equal((await call('GetProfiles', '', 'media', unpaddedNonce)).status, 401);
   const stale = digestHeader(authenticated.password, nonce, new Date(Date.now() - 600000).toISOString());
   assert.equal(authorized(parseXml(`<Header>${stale}</Header>`).Header, authenticated, new Map()), false);
   const bad = digestHeader('incorrect', nonce, new Date().toISOString());
   assert.equal((await call('GetProfiles', '', 'media', bad)).status, 401);
+});
+
+test('authentication decodes predefined and numeric XML escapes without allowing DTDs', async t => {
+  const authenticated = { ...config, username: 'cam&operator', password: 'unit-test-only' };
+  const call = await serve(t, authenticated);
+  const header = digestHeader(authenticated.password,
+    Buffer.from('escaped-username-nonce').toString('base64'), new Date().toISOString(), authenticated.username);
+  assert.equal((await call('GetProfiles', '', 'media', header)).status, 200);
+  assert.equal(parseXml('<value>&amp;&lt;&gt;&quot;&apos;&#38;&#x26;</value>').value, '&<>"\'&&');
+  assert.throws(() => parseXml('<!DOCTYPE value [<!ENTITY x "expanded">]><value>&x;</value>'), /Invalid XML/);
 });
 
 test('WS-Discovery correlates probes, filters scopes/types and advertises correct metadata', () => {
