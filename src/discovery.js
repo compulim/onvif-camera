@@ -1,35 +1,75 @@
 import { createSocket } from 'node:dgram';
 import { randomUUID } from 'node:crypto';
+import * as v from 'valibot';
 import { cameraScopes, deviceUrl } from './camera.js';
-import { escapeXml as x, parseXml } from './soap.js';
+import { buildXml, parseXml } from './soap.js';
 
 const group = '239.255.255.250';
 const port = 3702;
 const discoveryNamespace = 'http://schemas.xmlsoap.org/ws/2005/04/discovery';
 const addressingNamespace = 'http://schemas.xmlsoap.org/ws/2004/08/addressing';
 
+const ProbeEnvelopeSchema = v.looseObject({
+  Envelope: v.looseObject({
+    Header: v.looseObject({ MessageID: v.pipe(v.string(), v.minLength(1), v.maxLength(256)) }),
+    Body: v.looseObject({
+      // An empty <Probe/> parses to an empty string.
+      Probe: v.union([
+        v.literal(''),
+        v.looseObject({
+          Types: v.optional(v.string(), ''),
+          Scopes: v.optional(v.union([
+            v.string(),
+            v.looseObject({ '#text': v.optional(v.string(), ''), '@_MatchBy': v.optional(v.string()) })
+          ]), '')
+        })
+      ])
+    })
+  })
+});
+
 function discoveryMessage(config, action, relatesTo, sequence = 1) {
-  const endpoint = `<a:EndpointReference><a:Address>urn:uuid:${config.uuid}</a:Address></a:EndpointReference>`;
-  const metadata = `<d:Types>dn:NetworkVideoTransmitter</d:Types><d:Scopes>${cameraScopes(config).map(x).join(' ')}</d:Scopes><d:XAddrs>${x(deviceUrl(config))}</d:XAddrs><d:MetadataVersion>1</d:MetadataVersion>`;
+  const endpoint = { 'a:EndpointReference': { 'a:Address': `urn:uuid:${config.uuid}` } };
+  const metadata = {
+    'd:Types': 'dn:NetworkVideoTransmitter',
+    'd:Scopes': cameraScopes(config).join(' '),
+    'd:XAddrs': deviceUrl(config),
+    'd:MetadataVersion': 1
+  };
   const content = action === 'ProbeMatches'
-    ? `<d:ProbeMatches><d:ProbeMatch>${endpoint}${metadata}</d:ProbeMatch></d:ProbeMatches>`
-    : `<d:${action}>${endpoint}${action === 'Bye' ? '' : metadata}</d:${action}>`;
-  return `<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="${addressingNamespace}" xmlns:d="${discoveryNamespace}" xmlns:dn="http://www.onvif.org/ver10/network/wsdl"><s:Header><a:MessageID>urn:uuid:${randomUUID()}</a:MessageID><a:To>${relatesTo ? `${addressingNamespace}/role/anonymous` : 'urn:schemas-xmlsoap-org:ws:2005:04:discovery'}</a:To><a:Action>${discoveryNamespace}/${action}</a:Action>${relatesTo ? `<a:RelatesTo>${x(relatesTo)}</a:RelatesTo>` : ''}<d:AppSequence InstanceId="${config.instanceId || 1}" MessageNumber="${sequence}"/></s:Header><s:Body>${content}</s:Body></s:Envelope>`;
+    ? { 'd:ProbeMatches': { 'd:ProbeMatch': { ...endpoint, ...metadata } } }
+    : { [`d:${action}`]: { ...endpoint, ...(action === 'Bye' ? {} : metadata) } };
+  return buildXml({
+    's:Envelope': {
+      '@_xmlns:s': 'http://www.w3.org/2003/05/soap-envelope',
+      '@_xmlns:a': addressingNamespace,
+      '@_xmlns:d': discoveryNamespace,
+      '@_xmlns:dn': 'http://www.onvif.org/ver10/network/wsdl',
+      's:Header': {
+        'a:MessageID': `urn:uuid:${randomUUID()}`,
+        'a:To': relatesTo ? `${addressingNamespace}/role/anonymous` : 'urn:schemas-xmlsoap-org:ws:2005:04:discovery',
+        'a:Action': `${discoveryNamespace}/${action}`,
+        ...(relatesTo ? { 'a:RelatesTo': relatesTo } : {}),
+        'd:AppSequence': { '@_InstanceId': config.instanceId || 1, '@_MessageNumber': sequence }
+      },
+      's:Body': content
+    }
+  });
 }
 
 function matchesProbe(xml, config) {
-  const document = parseXml(xml);
-  const probe = document.Envelope?.Body?.Probe;
-  const id = document.Envelope?.Header?.MessageID;
-  if (probe === undefined || typeof id !== 'string' || id.length > 256) return undefined;
-  const types = probe?.Types || '';
-  if (typeof types !== 'string' || types.split(/\s+/).filter(Boolean).some(type => !type.endsWith(':NetworkVideoTransmitter') && type !== 'NetworkVideoTransmitter')) return undefined;
-  const scopes = typeof probe?.Scopes === 'string' ? probe.Scopes : probe?.Scopes?.['#text'] || '';
-  const matchBy = probe?.Scopes?.['@_MatchBy'];
+  const result = v.safeParse(ProbeEnvelopeSchema, parseXml(xml));
+  if (!result.success) return undefined;
+  const { Header: header, Body: { Probe: probe } } = result.output.Envelope;
+  const types = probe === '' ? '' : probe.Types;
+  if (types.split(/\s+/).filter(Boolean).some(type => !type.endsWith(':NetworkVideoTransmitter') && type !== 'NetworkVideoTransmitter')) return undefined;
+  const scopeNode = probe === '' ? '' : probe.Scopes;
+  const scopes = typeof scopeNode === 'string' ? scopeNode : scopeNode['#text'];
+  const matchBy = typeof scopeNode === 'string' ? undefined : scopeNode['@_MatchBy'];
   if (matchBy && matchBy !== `${discoveryNamespace}/rfc3986`) return undefined;
-  if (typeof scopes !== 'string' || !scopes.split(/\s+/).filter(Boolean).every(scope =>
+  if (!scopes.split(/\s+/).filter(Boolean).every(scope =>
     cameraScopes(config).some(own => own === scope || own.startsWith(`${scope.replace(/\/$/, '')}/`)))) return undefined;
-  return id;
+  return header.MessageID;
 }
 
 function startDiscovery(config, onError = console.error) {

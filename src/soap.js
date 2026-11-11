@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import { XMLBuilder, XMLParser, XMLValidator } from 'fast-xml-parser';
+import * as v from 'valibot';
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -10,11 +11,36 @@ const parser = new XMLParser({
   htmlEntities: true
 });
 
-function escapeXml(value) {
-  return String(value).replace(/[<>&"']/g, char => ({
-    '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;'
-  })[char]);
-}
+const builder = new XMLBuilder({
+  ignoreAttributes: false,
+  suppressEmptyNode: true,
+  suppressBooleanAttributes: false
+});
+
+// Parsed element text: either a plain string or an element with attributes and text.
+const TextSchema = v.union([
+  v.string(),
+  v.pipe(
+    v.looseObject({ '#text': v.optional(v.string(), '') }),
+    v.check(node => Object.keys(node).every(key => key === '#text' || key.startsWith('@_'))),
+    v.transform(node => node['#text'])
+  )
+]);
+
+const UsernameTokenSchema = v.looseObject({
+  Username: TextSchema,
+  // Digest only: never accept a plaintext password over HTTP.
+  Password: v.looseObject({
+    '#text': v.string(),
+    '@_Type': v.pipe(v.string(), v.endsWith('#PasswordDigest'))
+  }),
+  Nonce: v.pipe(TextSchema, v.regex(/^[A-Za-z0-9+/]+={0,2}$/)),
+  Created: TextSchema
+});
+
+const SecurityHeaderSchema = v.looseObject({
+  Security: v.looseObject({ UsernameToken: UsernameTokenSchema })
+});
 
 function parseXml(xml) {
   if (/<!DOCTYPE|<!ENTITY/i.test(xml) || XMLValidator.validate(xml) !== true) {
@@ -23,17 +49,32 @@ function parseXml(xml) {
   return parser.parse(xml);
 }
 
+function buildXml(document) {
+  return builder.build({ '?xml': { '@_version': '1.0', '@_encoding': 'UTF-8' }, ...document });
+}
+
 function envelope(body) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
- xmlns:tds="http://www.onvif.org/ver10/device/wsdl"
- xmlns:trt="http://www.onvif.org/ver10/media/wsdl"
- xmlns:tt="http://www.onvif.org/ver10/schema">
-<s:Body>${body}</s:Body></s:Envelope>`;
+  return buildXml({
+    's:Envelope': {
+      '@_xmlns:s': 'http://www.w3.org/2003/05/soap-envelope',
+      '@_xmlns:tds': 'http://www.onvif.org/ver10/device/wsdl',
+      '@_xmlns:trt': 'http://www.onvif.org/ver10/media/wsdl',
+      '@_xmlns:tt': 'http://www.onvif.org/ver10/schema',
+      's:Body': body
+    }
+  });
 }
 
 function fault(code, reason) {
-  return envelope(`<s:Fault><s:Code><s:Value>s:Sender</s:Value><s:Subcode><s:Value xmlns:ter="http://www.onvif.org/ver10/error">ter:${code}</s:Value></s:Subcode></s:Code><s:Reason><s:Text xml:lang="en">${escapeXml(reason)}</s:Text></s:Reason></s:Fault>`);
+  return envelope({
+    's:Fault': {
+      's:Code': {
+        's:Value': 's:Sender',
+        's:Subcode': { 's:Value': { '@_xmlns:ter': 'http://www.onvif.org/ver10/error', '#text': `ter:${code}` } }
+      },
+      's:Reason': { 's:Text': { '@_xml:lang': 'en', '#text': reason } }
+    }
+  });
 }
 
 function equal(a, b) {
@@ -42,22 +83,15 @@ function equal(a, b) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function text(value) {
-  return typeof value === 'string' ? value : value?.['#text'] || '';
-}
-
 function authorized(header, config, usedNonces, now = Date.now()) {
   if (!config.username) return true;
-  const token = header?.Security?.UsernameToken;
-  if (!token || !equal(text(token.Username), config.username)) return false;
-  const created = text(token.Created);
-  const timestamp = Date.parse(created);
+  const result = v.safeParse(SecurityHeaderSchema, header);
+  if (!result.success) return false;
+  const token = result.output.Security.UsernameToken;
+  if (!equal(token.Username, config.username)) return false;
+  const timestamp = Date.parse(token.Created);
   if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > 300000) return false;
-  const nonce = text(token.Nonce);
-  const type = token.Password?.['@_Type'] || '';
-  // Digest only: never accept a plaintext password over HTTP.
-  if (!type.endsWith('#PasswordDigest') || !nonce || !/^[A-Za-z0-9+/]+={0,2}$/.test(nonce)) return false;
-  const nonceBytes = Buffer.from(nonce, 'base64');
+  const nonceBytes = Buffer.from(token.Nonce, 'base64');
   if (!nonceBytes.length) return false;
   const nonceKey = nonceBytes.toString('base64');
   for (const [key, expires] of usedNonces) {
@@ -65,10 +99,10 @@ function authorized(header, config, usedNonces, now = Date.now()) {
   }
   if (usedNonces.has(nonceKey) || usedNonces.size >= 10000) return false;
   const expected = createHash('sha1')
-    .update(nonceBytes).update(created).update(config.password).digest('base64');
-  if (!equal(text(token.Password), expected)) return false;
+    .update(nonceBytes).update(token.Created).update(config.password).digest('base64');
+  if (!equal(token.Password['#text'], expected)) return false;
   usedNonces.set(nonceKey, timestamp + 300000);
   return true;
 }
 
-export { authorized, envelope, escapeXml, fault, parseXml };
+export { authorized, buildXml, envelope, fault, parseXml, TextSchema };

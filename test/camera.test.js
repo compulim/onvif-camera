@@ -5,9 +5,11 @@ import { test } from 'node:test';
 import { createCameraServer } from '../src/camera.js';
 import { loadConfig } from '../src/config.js';
 import { discoveryMessage, matchesProbe } from '../src/discovery.js';
-import { authorized, escapeXml, parseXml } from '../src/soap.js';
+import { XMLBuilder } from 'fast-xml-parser';
+import { authorized, parseXml } from '../src/soap.js';
 
 const config = loadConfig({ CAMERA_ADDRESS: '192.168.1.20' });
+const builder = new XMLBuilder({ ignoreAttributes: false });
 
 function request(operation, body = '', header = '') {
   return `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:trt="http://www.onvif.org/ver10/media/wsdl"><s:Header>${header}</s:Header><s:Body><trt:${operation}>${body}</trt:${operation}></s:Body></s:Envelope>`;
@@ -69,6 +71,9 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   assert.equal((await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Multicast</Stream></trt:StreamSetup>')).status, 500);
   assert.equal((await call('SetVideoEncoderConfiguration')).status, 500);
   assert.equal((await call('GetProfile')).status, 500);
+  const invalid = await call('GetProfile', '<trt:ProfileToken><Nested>main</Nested></trt:ProfileToken>');
+  assert.equal(invalid.status, 500);
+  assert.match(invalid.xml, /ter:InvalidArgVal/);
   const encoder = await call('GetVideoEncoderConfiguration', '<trt:ConfigurationToken>video_encoder</trt:ConfigurationToken>');
   assert.equal(encoder.body.GetVideoEncoderConfigurationResponse.Configuration.Encoding, 'H264');
   assert.equal((await call('GetVideoEncoderConfiguration', '<trt:ConfigurationToken>missing</trt:ConfigurationToken>')).status, 500);
@@ -108,7 +113,16 @@ test('malformed, entity-bearing, oversized requests and incorrect paths are reje
 
 function digestHeader(password, nonce, created, username = 'camera') {
   const digest = createHash('sha1').update(Buffer.from(nonce, 'base64')).update(created).update(password).digest('base64');
-  return `<Security><UsernameToken><Username>${escapeXml(username)}</Username><Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${digest}</Password><Nonce>${nonce}</Nonce><Created>${created}</Created></UsernameToken></Security>`;
+  return builder.build({
+    Security: {
+      UsernameToken: {
+        Username: username,
+        Password: { '@_Type': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest', '#text': digest },
+        Nonce: nonce,
+        Created: created
+      }
+    }
+  });
 }
 
 test('optional UsernameToken digest authentication rejects replay, bad passwords and stale timestamps', async t => {
