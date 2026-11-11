@@ -46,8 +46,29 @@ function response(operation, args, config, media) {
   const wrap = body => envelope(`<${ns}:${operation}Response>${body}</${ns}:${operation}Response>`);
   const date = new Date();
   if (media) {
+    if (['GetProfile', 'GetStreamUri'].includes(operation) && args?.ProfileToken === undefined) {
+      return fault('NoProfile', 'A profile token is required');
+    }
     if (args?.ProfileToken !== undefined && args.ProfileToken !== profileToken) {
       return fault('NoProfile', 'Unknown profile token');
+    }
+    const configurations = {
+      VideoSource: { token: 'video_source', xml: videoSourceConfig(config) },
+      VideoEncoder: { token: 'video_encoder', xml: videoEncoderConfig(config) },
+      AudioSource: { token: 'audio_source', xml: config.audio ? audioSourceConfig() : '' },
+      AudioEncoder: { token: 'audio_encoder', xml: config.audio ? audioEncoderConfig() : '' }
+    };
+    for (const [kind, value] of Object.entries(configurations)) {
+      if (operation === `Get${kind}Configuration`) {
+        if (!value.xml || args?.ConfigurationToken !== value.token) {
+          return fault('NoConfig', 'Unknown configuration token');
+        }
+        return wrap(value.xml.replaceAll(`tt:${kind}Configuration`, 'trt:Configuration'));
+      }
+      if (operation === `GetCompatible${kind}Configurations`) {
+        if (args?.ProfileToken !== profileToken) return fault('NoProfile', 'A profile token is required');
+        return wrap(value.xml.replaceAll(`tt:${kind}Configuration`, 'trt:Configurations'));
+      }
     }
     switch (operation) {
       case 'GetProfiles': return wrap(profile(config));
@@ -71,6 +92,16 @@ function response(operation, args, config, media) {
         return wrap(config.audio ? audioSourceConfig().replaceAll('tt:AudioSourceConfiguration', 'trt:Configurations') : '');
       case 'GetAudioEncoderConfigurations':
         return wrap(config.audio ? audioEncoderConfig().replaceAll('tt:AudioEncoderConfiguration', 'trt:Configurations') : '');
+      case 'GetVideoEncoderConfigurationOptions':
+        if (args?.ConfigurationToken !== undefined && args.ConfigurationToken !== 'video_encoder') {
+          return fault('NoConfig', 'Unknown configuration token');
+        }
+        return wrap(`<trt:Options><tt:QualityRange><tt:Min>5</tt:Min><tt:Max>5</tt:Max></tt:QualityRange><tt:H264><tt:ResolutionsAvailable><tt:Width>${config.width}</tt:Width><tt:Height>${config.height}</tt:Height></tt:ResolutionsAvailable><tt:GovLengthRange><tt:Min>${config.fps * 2}</tt:Min><tt:Max>${config.fps * 2}</tt:Max></tt:GovLengthRange><tt:FrameRateRange><tt:Min>${config.fps}</tt:Min><tt:Max>${config.fps}</tt:Max></tt:FrameRateRange><tt:EncodingIntervalRange><tt:Min>1</tt:Min><tt:Max>1</tt:Max></tt:EncodingIntervalRange><tt:H264ProfilesSupported>Main</tt:H264ProfilesSupported></tt:H264></trt:Options>`);
+      case 'GetAudioEncoderConfigurationOptions':
+        if (args?.ConfigurationToken !== undefined && args.ConfigurationToken !== 'audio_encoder') {
+          return fault('NoConfig', 'Unknown configuration token');
+        }
+        return wrap(config.audio ? '<trt:Options><tt:Encoding>AAC</tt:Encoding><tt:BitrateList><tt:Items>64</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>48</tt:Items></tt:SampleRateList></trt:Options>' : '');
       case 'GetServiceCapabilities':
         return wrap('<trt:Capabilities SnapshotUri="false" Rotation="false" VideoSourceMode="false" OSD="false"><trt:ProfileCapabilities MaximumNumberOfProfiles="1"/><trt:StreamingCapabilities RTPMulticast="false" RTP_TCP="true" RTP_RTSP_TCP="true" NonAggregateControl="false"/></trt:Capabilities>');
       default: return fault('ActionNotSupported', 'This read-only camera does not support this operation');
@@ -89,6 +120,8 @@ function response(operation, args, config, media) {
       return wrap(cameraScopes(config).map(scope => `<tds:Scopes><tt:ScopeDef>Fixed</tt:ScopeDef><tt:ScopeItem>${x(scope)}</tt:ScopeItem></tds:Scopes>`).join(''));
     case 'GetHostname': return wrap('<tds:HostnameInformation><tt:FromDHCP>false</tt:FromDHCP><tt:Name>rpi-onvif-camera</tt:Name></tds:HostnameInformation>');
     case 'GetDiscoveryMode': return wrap(`<tds:DiscoveryMode>${config.discovery ? 'Discoverable' : 'NonDiscoverable'}</tds:DiscoveryMode>`);
+    case 'GetServiceCapabilities':
+      return wrap(`<tds:Capabilities><tds:Network IPFilter="false" ZeroConfiguration="false" IPVersion6="false" DynDNS="false"/><tds:Security TLS1.0="false" TLS1.1="false" TLS1.2="false" UsernameToken="${Boolean(config.username)}" HttpDigest="false"/><tds:System DiscoveryResolve="false" DiscoveryBye="true" RemoteDiscovery="false" SystemBackup="false" SystemLogging="false" FirmwareUpgrade="false"/></tds:Capabilities>`);
     case 'GetNetworkProtocols':
       return wrap(`<tds:NetworkProtocols><tt:Name>HTTP</tt:Name><tt:Enabled>true</tt:Enabled><tt:Port>${config.port}</tt:Port></tds:NetworkProtocols><tds:NetworkProtocols><tt:Name>RTSP</tt:Name><tt:Enabled>true</tt:Enabled><tt:Port>${config.rtspPort}</tt:Port></tds:NetworkProtocols>`);
     default: return fault('ActionNotSupported', 'This read-only camera does not support this operation');

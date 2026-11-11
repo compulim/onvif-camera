@@ -66,6 +66,14 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   assert.equal((await call('GetProfile', '<trt:ProfileToken>missing</trt:ProfileToken>')).status, 500);
   assert.equal((await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Multicast</Stream></trt:StreamSetup>')).status, 500);
   assert.equal((await call('SetVideoEncoderConfiguration')).status, 500);
+  assert.equal((await call('GetProfile')).status, 500);
+  const encoder = await call('GetVideoEncoderConfiguration', '<trt:ConfigurationToken>video_encoder</trt:ConfigurationToken>');
+  assert.equal(encoder.body.GetVideoEncoderConfigurationResponse.Configuration.Encoding, 'H264');
+  assert.equal((await call('GetVideoEncoderConfiguration', '<trt:ConfigurationToken>missing</trt:ConfigurationToken>')).status, 500);
+  const compatible = await call('GetCompatibleVideoEncoderConfigurations', '<trt:ProfileToken>main</trt:ProfileToken>');
+  assert.equal(compatible.body.GetCompatibleVideoEncoderConfigurationsResponse.Configurations['@_token'], 'video_encoder');
+  const options = await call('GetVideoEncoderConfigurationOptions');
+  assert.equal(options.body.GetVideoEncoderConfigurationOptionsResponse.Options.H264.ResolutionsAvailable.Width, '1280');
 });
 
 test('video-only profiles omit audio and XML-escape configured names', async t => {
