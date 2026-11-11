@@ -19,11 +19,6 @@ function loadConfig(env = process.env) {
   if (Boolean(username) !== Boolean(password)) {
     throw new Error('Set both CAMERA_USERNAME and CAMERA_PASSWORD, or neither');
   }
-  const audioEncoding = (env.CAMERA_AUDIO_ENCODING || 'AAC').toUpperCase();
-  if (audioEncoding !== 'AAC' && audioEncoding !== 'G711') {
-    throw new Error('CAMERA_AUDIO_ENCODING must be AAC or G711');
-  }
-  const g711 = audioEncoding === 'G711';
   // Keep the endpoint identity stable across service restarts.
   const identity = createHash('sha256').update(env.CAMERA_ID || address).digest('hex');
   return {
@@ -37,10 +32,9 @@ function loadConfig(env = process.env) {
     fps: integer(env, 'CAMERA_FPS', 30, 1, 60),
     bitrate: integer(env, 'CAMERA_BITRATE', 20000, 100, 50000),
     audio: env.CAMERA_AUDIO !== 'false',
-    audioEncoding,
-    audioBitrate: integer(env, 'CAMERA_AUDIO_BITRATE', g711 ? 64 : 128, 8, 512),
-    audioSampleRate: integer(env, 'CAMERA_AUDIO_SAMPLE_RATE', g711 ? 8 : 48, 8, 96),
-    audioChannels: integer(env, 'CAMERA_AUDIO_CHANNELS', g711 ? 1 : 2, 1, 2),
+    audioBitrate: integer(env, 'CAMERA_AUDIO_BITRATE', 128, 8, 512),
+    audioSampleRate: integer(env, 'CAMERA_AUDIO_SAMPLE_RATE', 48000, 8000, 96000),
+    audioChannels: integer(env, 'CAMERA_AUDIO_CHANNELS', 2, 1, 2),
     discovery: env.CAMERA_DISCOVERY !== 'false',
     username,
     password,

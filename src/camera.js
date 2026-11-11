@@ -9,7 +9,11 @@ const scopes = [
 ];
 
 function cameraScopes(config) {
-  return [...scopes, `onvif://www.onvif.org/name/${encodeURIComponent(config.name)}`];
+  return [
+    ...scopes,
+    ...(config.audio ? ['onvif://www.onvif.org/type/audio_encoder'] : []),
+    `onvif://www.onvif.org/name/${encodeURIComponent(config.name)}`
+  ];
 }
 
 function deviceUrl(config) {
@@ -28,8 +32,13 @@ function audioSourceConfig() {
   return '<tt:AudioSourceConfiguration token="audio_source"><tt:Name>Audio source</tt:Name><tt:UseCount>1</tt:UseCount><tt:SourceToken>audio</tt:SourceToken></tt:AudioSourceConfiguration>';
 }
 
+// ONVIF Media1 expresses audio sample rate in kHz (xs:int), e.g. 44100 Hz -> 44.
+function audioSampleRateKHz(config) {
+  return Math.round(config.audioSampleRate / 1000);
+}
+
 function audioEncoderConfig(config) {
-  return `<tt:AudioEncoderConfiguration token="audio_encoder"><tt:Name>${config.audioEncoding}</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>${config.audioEncoding}</tt:Encoding><tt:Bitrate>${config.audioBitrate}</tt:Bitrate><tt:SampleRate>${config.audioSampleRate}</tt:SampleRate><tt:Multicast><tt:Address><tt:Type>IPv4</tt:Type><tt:IPv4Address>0.0.0.0</tt:IPv4Address></tt:Address><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:AudioEncoderConfiguration>`;
+  return `<tt:AudioEncoderConfiguration token="audio_encoder"><tt:Name>AAC</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>AAC</tt:Encoding><tt:Bitrate>${config.audioBitrate}</tt:Bitrate><tt:SampleRate>${audioSampleRateKHz(config)}</tt:SampleRate><tt:Multicast><tt:Address><tt:Type>IPv4</tt:Type><tt:IPv4Address>0.0.0.0</tt:IPv4Address></tt:Address><tt:Port>0</tt:Port><tt:TTL>1</tt:TTL><tt:AutoStart>false</tt:AutoStart></tt:Multicast><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:AudioEncoderConfiguration>`;
 }
 
 function profile(config) {
@@ -101,7 +110,7 @@ function response(operation, args, config, media) {
         if (args?.ConfigurationToken !== undefined && args.ConfigurationToken !== 'audio_encoder') {
           return fault('NoConfig', 'Unknown configuration token');
         }
-        return wrap(config.audio ? `<trt:Options><tt:Encoding>${config.audioEncoding}</tt:Encoding><tt:BitrateList><tt:Items>${config.audioBitrate}</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>${config.audioSampleRate}</tt:Items></tt:SampleRateList></trt:Options>` : '');
+        return wrap(config.audio ? `<trt:Options><tt:Options><tt:Encoding>AAC</tt:Encoding><tt:BitrateList><tt:Items>${config.audioBitrate}</tt:Items></tt:BitrateList><tt:SampleRateList><tt:Items>${audioSampleRateKHz(config)}</tt:Items></tt:SampleRateList></tt:Options></trt:Options>` : '');
       case 'GetServiceCapabilities':
         return wrap('<trt:Capabilities SnapshotUri="false" Rotation="false" VideoSourceMode="false" OSD="false"><trt:ProfileCapabilities MaximumNumberOfProfiles="1"/><trt:StreamingCapabilities RTPMulticast="false" RTP_TCP="true" RTP_RTSP_TCP="true" NonAggregateControl="false"/></trt:Capabilities>');
       default: return fault('ActionNotSupported', 'This read-only camera does not support this operation');

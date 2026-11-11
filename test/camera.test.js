@@ -62,6 +62,7 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   assert.equal(Number(profile.AudioEncoderConfiguration.Bitrate), 128);
   assert.equal(Number(profile.AudioEncoderConfiguration.SampleRate), 48);
   assert.equal(Number((await call('GetAudioSources')).body.GetAudioSourcesResponse.AudioSources.Channels), 2);
+  assert.match((await call('GetScopes', '', 'device')).xml, /onvif:\/\/www\.onvif\.org\/type\/audio_encoder/);
   const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
   assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.20:8554/camera');
   assert.equal((await call('GetProfile', '<trt:ProfileToken>missing</trt:ProfileToken>')).status, 500);
@@ -84,6 +85,7 @@ test('video-only profiles omit audio and XML-escape configured names', async t =
   assert.equal(profiles.body.GetProfilesResponse.Profiles.Name, 'Camera <A> & "B"');
   assert.equal(profiles.body.GetProfilesResponse.Profiles.AudioEncoderConfiguration, undefined);
   assert.equal((await call('GetAudioSources')).body.GetAudioSourcesResponse, '');
+  assert.doesNotMatch((await call('GetScopes', '', 'device')).xml, /type\/audio_encoder/);
 });
 
 test('malformed, entity-bearing, oversized requests and incorrect paths are rejected', async t => {
@@ -154,21 +156,11 @@ test('WS-Discovery correlates probes, filters scopes/types and advertises correc
 test('audio encoder settings are configurable', async t => {
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '0' }), /CAMERA_AUDIO_BITRATE/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_CHANNELS: '3' }), /CAMERA_AUDIO_CHANNELS/);
-  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '64', CAMERA_AUDIO_SAMPLE_RATE: '44', CAMERA_AUDIO_CHANNELS: '1' }));
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_SAMPLE_RATE: '48' }), /CAMERA_AUDIO_SAMPLE_RATE/);
+  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '64', CAMERA_AUDIO_SAMPLE_RATE: '44100', CAMERA_AUDIO_CHANNELS: '1' }));
   assert.equal(Number((await call('GetAudioSources')).body.GetAudioSourcesResponse.AudioSources.Channels), 1);
-  const options = (await call('GetAudioEncoderConfigurationOptions')).body.GetAudioEncoderConfigurationOptionsResponse.Options;
+  const options = (await call('GetAudioEncoderConfigurationOptions')).body.GetAudioEncoderConfigurationOptionsResponse.Options.Options;
+  assert.equal(options.Encoding, 'AAC');
   assert.equal(Number(options.BitrateList.Items), 64);
   assert.equal(Number(options.SampleRateList.Items), 44);
-});
-
-test('G.711 audio encoding can be advertised with telephony defaults', async t => {
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_ENCODING: 'MP3' }), /CAMERA_AUDIO_ENCODING/);
-  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_ENCODING: 'g711' }));
-  const encoder = (await call('GetProfiles')).body.GetProfilesResponse.Profiles.AudioEncoderConfiguration;
-  assert.equal(encoder.Encoding, 'G711');
-  assert.equal(Number(encoder.Bitrate), 64);
-  assert.equal(Number(encoder.SampleRate), 8);
-  assert.equal(Number((await call('GetAudioSources')).body.GetAudioSourcesResponse.AudioSources.Channels), 1);
-  const options = (await call('GetAudioEncoderConfigurationOptions')).body.GetAudioEncoderConfigurationOptionsResponse.Options;
-  assert.equal(options.Encoding, 'G711');
 });
