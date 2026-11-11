@@ -10,7 +10,9 @@ rtspEncryption: "no"
 rtmp: false
 hls: false
 webrtc: false
-srt: false
+srt: true
+# Publishers push MPEG-TS over SRT (UDP); viewers read over RTSP.
+srtAddress: :8890
 moq: false
 api: false
 metrics: false

@@ -32,6 +32,8 @@ function loadConfig(env = process.env) {
     fps: integer(env, 'CAMERA_FPS', 15, 1, 60),
     bitrate: integer(env, 'CAMERA_BITRATE', 2000, 100, 50000),
     audio: env.CAMERA_AUDIO !== 'false',
+    audioBitrate: integer(env, 'CAMERA_AUDIO_BITRATE', 128, 8, 512),
+    audioSampleRate: integer(env, 'CAMERA_AUDIO_SAMPLE_RATE', 48, 8, 96),
     discovery: env.CAMERA_DISCOVERY !== 'false',
     username,
     password,

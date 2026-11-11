@@ -1,8 +1,8 @@
 # rpi-onvif-camera
 
 Emulate a fixed, read-only ONVIF camera on Raspberry Pi OS or another systemd-based
-Linux host. Another device publishes an H.264 (optionally AAC) stream to MediaMTX,
-MediaMTX serves it over RTSP, and Node.js provides ONVIF Device/Media1 SOAP and
+Linux host. Another device publishes an H.264 (optionally AAC) stream to MediaMTX
+over SRT, MediaMTX serves it over RTSP, and Node.js provides ONVIF Device/Media1 SOAP and
 WS-Discovery. No FFmpeg or mpv is needed on this host.
 
 This is an ONVIF-compatible emulator, **not an ONVIF-certified device**. It supports
@@ -57,6 +57,7 @@ or shell substitutions.
 | `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1280`, `720` | Advertised resolution |
 | `CAMERA_FPS`, `CAMERA_BITRATE` | `15`, `2000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
+| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48` | Advertised AAC bitrate (kbit/s) and sample rate (kHz) |
 | `CAMERA_PORT`, `CAMERA_RTSP_PORT` | `8000`, `8554` | SOAP and RTSP TCP ports |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
@@ -64,10 +65,10 @@ or shell substitutions.
 
 The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values.
 Keep them aligned with what is published (H.264 Main video; optional mono AAC,
-48 kHz, 64 kbit/s audio).
+16-bit 48 kHz source encoded as 128 kbit/s AAC by default).
 
-Changing ports requires matching changes to `rtspAddress` in MediaMTX and your
-firewall. Restart after configuration or network-address changes:
+Changing ports requires matching changes to `rtspAddress` (or `srtAddress` for
+the SRT publishing port, default UDP 8890) in MediaMTX and your firewall. Restart after configuration or network-address changes:
 
 ```sh
 sudo systemctl restart rpi-onvif-mediamtx.service rpi-onvif-camera.service
@@ -75,17 +76,18 @@ sudo systemctl restart rpi-onvif-mediamtx.service rpi-onvif-camera.service
 
 ### Publishing the stream
 
-Publish from another device on the LAN to the `camera` path, for example:
+Publish from another device on the LAN to the `camera` path over SRT (MPEG-TS
+over UDP port 8890), which has lower overhead than RTSP publishing:
 
 ```sh
-ffmpeg -re -i input.mp4 -c copy -f rtsp -rtsp_transport tcp rtsp://PI_ADDRESS:8554/camera
+ffmpeg -re -i input.mp4 -c copy -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
 To loop an MP4 and re-encode it to match the advertised profile (set
 `CAMERA_WIDTH=1920`, `CAMERA_HEIGHT=1080`, `CAMERA_FPS=30` to match):
 
 ```sh
-ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 2000k -g 30 -bf 0 -c:a aac -b:a 64k -ar 48000 -ac 1 -f rtsp -rtsp_transport tcp rtsp://PI_ADDRESS:8554/camera
+ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 2000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 1 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
 The supplied MediaMTX configuration accepts publishers from loopback and private
@@ -93,7 +95,8 @@ IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and rejects a seco
 concurrent publisher. **Narrow the `publish` user's `ips` list** in
 `/etc/rpi-onvif-camera/mediamtx.yml` to the publisher's address (for example,
 `192.168.1.50/32`) so other LAN hosts cannot take over the stream, then restart
-MediaMTX. It accepts both TCP and UDP RTSP clients.
+MediaMTX. It accepts both TCP and UDP RTSP clients. If audio is published with
+different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`.
 
 ## Connect and troubleshoot
 
@@ -104,7 +107,7 @@ Use your NVR's ONVIF discovery on the same multicast-capable LAN, or add:
 - Video stream: `rtsp://PI_ADDRESS:8554/camera` (VLC, ffplay, NVR)
 
 Allow **TCP 8000/8554**, **UDP 3702** (discovery), and **UDP 8000/8001**
-(RTP/RTCP) from trusted clients only. Multicast often does not cross VLANs;
+(RTP/RTCP) from trusted clients only, plus **UDP 8890** (SRT) from the publisher. Multicast often does not cross VLANs;
 manually configure the device URL in that case. No privileged ports are needed.
 
 ```sh
