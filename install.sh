@@ -1,12 +1,14 @@
 #!/bin/sh
+# Installs the ONVIF server only. Install MediaMTX separately with
+# install-mediamtx.sh, or use an existing MediaMTX installation.
 set -eu
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Run with sudo: sudo sh install.sh /absolute/path/to/mediamtx" >&2
+  echo "Run with sudo: sudo sh install.sh" >&2
   exit 1
 fi
-if [ "$#" -ne 1 ] || [ ! -x "$1" ]; then
-  echo "Supply an executable MediaMTX v1.21.3 binary for this Linux architecture." >&2
+if [ "$#" -ne 0 ]; then
+  echo "install.sh takes no arguments. To install MediaMTX, run: sudo sh install-mediamtx.sh /absolute/path/to/mediamtx" >&2
   exit 1
 fi
 
@@ -30,21 +32,17 @@ config=/etc/rpi-onvif-camera
 if ! id onvif-camera >/dev/null 2>&1; then
   useradd --system --user-group --create-home --home-dir /var/lib/rpi-onvif-camera --shell /usr/sbin/nologin onvif-camera
 fi
-install -d -m 0755 "$app" "$app/src" "$app/bin"
+install -d -m 0755 "$app" "$app/src"
 install -d -m 0750 -o root -g onvif-camera "$config"
 install -m 0644 "$source_dir/package.json" "$source_dir/package-lock.json" "$app/"
 install -m 0644 "$source_dir"/src/*.js "$app/src/"
-install -m 0755 "$1" "$app/bin/mediamtx"
 npm ci --prefix "$app" --omit=dev --ignore-scripts --no-audit --no-fund
 
 # Preserve local configuration on upgrades.
 if [ ! -e "$config/camera.env" ]; then
   install -m 0640 -o root -g onvif-camera "$source_dir/deploy/camera.env.example" "$config/camera.env"
 fi
-if [ ! -e "$config/mediamtx.yml" ]; then
-  install -m 0640 -o root -g onvif-camera "$source_dir/deploy/mediamtx.yml" "$config/mediamtx.yml"
-fi
-install -m 0644 "$source_dir"/deploy/*.service /etc/systemd/system/
+install -m 0644 "$source_dir/deploy/rpi-onvif-camera.service" /etc/systemd/system/
 systemctl daemon-reload
-echo "Installed. Edit $config/camera.env and $config/mediamtx.yml, then run:"
-echo "sudo systemctl enable --now rpi-onvif-mediamtx.service rpi-onvif-camera.service"
+echo "Installed the ONVIF server. Edit $config/camera.env, then run:"
+echo "sudo systemctl enable --now rpi-onvif-camera.service"

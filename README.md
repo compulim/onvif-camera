@@ -17,31 +17,42 @@ unsupported operations return SOAP faults.
    `/usr/local/bin` or `/usr/bin`. A per-user nvm installation is not accessible
    to the service. Check `node --version`; older Raspberry Pi OS repositories
    may need a newer Node.js installation. A 64-bit OS is recommended.
-2. Download **MediaMTX v1.21.3** from the
+2. Install MediaMTX, unless it is already installed (skip to step 3 if so).
+   Download **MediaMTX v1.21.3** from the
    [upstream release](https://github.com/bluenviron/mediamtx/releases/tag/v1.21.3).
    Select the Linux archive matching your **OS** (`dpkg --print-architecture`):
    `arm64` → `linux_arm64`, `armhf` → `linux_armv7`, or `amd64` → `linux_amd64`.
    Check its SHA-256 against the release's checksums, then extract the `mediamtx`
    executable. The installer does not fetch or execute remote installation scripts.
-3. From this checkout, install the application and units:
 
    ```sh
-   sudo sh ./install.sh /absolute/path/to/mediamtx
-   sudoedit /etc/rpi-onvif-camera/camera.env
+   sudo sh ./install-mediamtx.sh /absolute/path/to/mediamtx
    sudoedit /etc/rpi-onvif-camera/mediamtx.yml
+   sudo systemctl enable --now rpi-onvif-mediamtx.service
+   ```
+
+   With an existing MediaMTX installation, make sure it accepts the published
+   stream on the `camera` path and serves it over RTSP on `CAMERA_RTSP_PORT`
+   (default 8554); see [`deploy/mediamtx.yml`](deploy/mediamtx.yml) for the
+   reference settings.
+3. From this checkout, install the ONVIF server:
+
+   ```sh
+   sudo sh ./install.sh
+   sudoedit /etc/rpi-onvif-camera/camera.env
    ```
 
    Set `CAMERA_ADDRESS` to the Pi's LAN IPv4 address (use a DHCP reservation) and
    the `CAMERA_WIDTH`/`HEIGHT`/`FPS`/`BITRATE`/`AUDIO` values to match the
-   published stream. Then start the services:
+   published stream. Then start the service:
 
    ```sh
-   sudo systemctl enable --now rpi-onvif-mediamtx.service rpi-onvif-camera.service
+   sudo systemctl enable --now rpi-onvif-camera.service
    ```
 
-The installer creates an unprivileged `onvif-camera` account, installs under
-`/opt/rpi-onvif-camera`, and preserves both configuration files on upgrades.
-Re-run it to upgrade, then restart both services. Services restart after failures.
+The installers create an unprivileged `onvif-camera` account, install under
+`/opt/rpi-onvif-camera`, and preserve configuration files on upgrades.
+Re-run them to upgrade, then restart the services. Services restart after failures.
 
 ## Configuration
 
