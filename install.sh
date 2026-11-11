@@ -13,7 +13,7 @@ fi
 # Use system-wide tools, including administrative commands such as useradd.
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
-for command in node npm ffmpeg systemctl useradd install; do
+for command in node npm systemctl useradd install; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Missing prerequisite: $command (see README.md)" >&2
     exit 1

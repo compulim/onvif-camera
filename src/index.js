@@ -2,11 +2,9 @@ import { once } from 'node:events';
 import { createCameraServer, deviceUrl } from './camera.js';
 import { loadConfig } from './config.js';
 import { startDiscovery } from './discovery.js';
-import { startIngest } from './ingest.js';
 
 let server;
 let discovery;
-let ingest;
 let stopping = false;
 
 async function shutdown(error) {
@@ -14,7 +12,6 @@ async function shutdown(error) {
   stopping = true;
   if (error) console.error(error.message);
   const results = await Promise.allSettled([
-    ingest?.close(),
     discovery?.close(),
     server?.listening ? new Promise(resolve => {
       server.close(resolve);
@@ -34,7 +31,6 @@ try {
   server.on('error', error => void shutdown(error));
   if (!stopping) {
     if (config.discovery) discovery = startDiscovery(config, error => void shutdown(error));
-    ingest = startIngest(config, error => void shutdown(error));
     console.log(`ONVIF camera listening at ${deviceUrl(config)}`);
     if (!config.username) console.warn('ONVIF authentication is disabled. Use only on a trusted LAN.');
   }
