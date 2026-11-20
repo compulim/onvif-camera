@@ -1,6 +1,6 @@
 # rpi-onvif-camera
 
-Emulate a fixed, read-only ONVIF camera on Raspberry Pi OS or another systemd-based
+Emulate a fixed, read-only ONVIF camera on Raspberry Pi OS or another
 Linux host. Another device publishes an H.264 (optionally AAC) stream to MediaMTX
 over SRT, MediaMTX serves it over RTSP, and Node.js provides ONVIF Device/Media1 SOAP and
 WS-Discovery. No FFmpeg or mpv is needed on this host.
@@ -11,43 +11,27 @@ source/encoder configuration queries, encoder options, and `GetStreamUri`.
 PTZ, events, snapshots, recording, and configuration writes are not implemented;
 unsupported operations return SOAP faults.
 
-## Install on Raspberry Pi OS / Debian
+## Usage
 
-1. Install **Node.js 22 or newer and npm system-wide**, with `node` on
-   `/usr/local/bin` or `/usr/bin`. A per-user nvm installation is not accessible
-   to the service. Check `node --version`; older Raspberry Pi OS repositories
-   may need a newer Node.js installation. A 64-bit OS is recommended.
-2. Download **MediaMTX v1.21.3** from the
-   [upstream release](https://github.com/bluenviron/mediamtx/releases/tag/v1.21.3).
-   Select the Linux archive matching your **OS** (`dpkg --print-architecture`):
-   `arm64` → `linux_arm64`, `armhf` → `linux_armv7`, or `amd64` → `linux_amd64`.
-   Check its SHA-256 against the release's checksums, then extract the `mediamtx`
-   executable. The installer does not fetch or execute remote installation scripts.
-3. From this checkout, install the application and units:
+Requires **Node.js 22 or newer**. Run [MediaMTX](https://github.com/bluenviron/mediamtx)
+separately with a `camera` path that accepts the published stream, then start the
+ONVIF service from a directory containing your `.env` file:
 
-   ```sh
-   sudo sh ./install.sh /absolute/path/to/mediamtx
-   sudoedit /etc/rpi-onvif-camera/camera.env
-   sudoedit /etc/rpi-onvif-camera/mediamtx.yml
-   ```
+```sh
+curl -o .env https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/.env.example
+nano .env
+npx rpi-onvif-camera
+```
 
-   Set `CAMERA_ADDRESS` to the Pi's LAN IPv4 address (use a DHCP reservation) and
-   the `CAMERA_WIDTH`/`HEIGHT`/`FPS`/`BITRATE`/`AUDIO` values to match the
-   published stream. Then start the services:
-
-   ```sh
-   sudo systemctl enable --now rpi-onvif-mediamtx.service rpi-onvif-camera.service
-   ```
-
-The installer creates an unprivileged `onvif-camera` account, installs under
-`/opt/rpi-onvif-camera`, and preserves both configuration files on upgrades.
-Re-run it to upgrade, then restart both services. Services restart after failures.
+Set `CAMERA_ADDRESS` to the host's LAN IPv4 address (use a DHCP reservation) and
+the `CAMERA_WIDTH`/`HEIGHT`/`FPS`/`BITRATE`/`AUDIO` values to match the published
+stream. Settings are loaded from `.env` in the current working directory via
+[dotenv](https://github.com/motdotla/dotenv); variables already set in the
+environment take precedence.
 
 ## Configuration
 
-See [`deploy/camera.env.example`](deploy/camera.env.example) for all settings.
-The file is a systemd EnvironmentFile, **not a shell script**; do not use `export`
-or shell substitutions.
+See [`.env.example`](.env.example) for all settings.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -76,12 +60,8 @@ Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
 
 Changing the local RTSP port requires matching changes to `rtspAddress` in MediaMTX
 and `CAMERA_RTSP_URL` (or `srtAddress` for the SRT publishing port, default UDP
-8890), plus your firewall. If `CAMERA_RTSP_URL` points to another machine, the local
-MediaMTX service is not needed. Restart after configuration or network-address changes:
-
-```sh
-sudo systemctl restart rpi-onvif-mediamtx.service rpi-onvif-camera.service
-```
+8890), plus your firewall. If `CAMERA_RTSP_URL` points to another machine, a local
+MediaMTX is not needed. Restart after configuration or network-address changes.
 
 ### Publishing the stream
 
@@ -99,12 +79,9 @@ To loop an MP4 and re-encode it to match the default advertised profile
 ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 20000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
-The supplied MediaMTX configuration accepts publishers from loopback and private
-IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and rejects a second
-concurrent publisher. **Narrow the `publish` user's `ips` list** in
-`/etc/rpi-onvif-camera/mediamtx.yml` to the publisher's address (for example,
-`192.168.1.50/32`) so other LAN hosts cannot take over the stream, then restart
-MediaMTX. It accepts both TCP and UDP RTSP clients. If audio is published with
+In your MediaMTX configuration, **restrict publishing** on the `camera` path to the
+publisher's address (for example, `192.168.1.50/32`) so other LAN hosts cannot take
+over the stream, and allow both TCP and UDP RTSP clients. If audio is published with
 different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`/`CAMERA_AUDIO_CHANNELS`.
 
 ## Connect and troubleshoot
@@ -120,7 +97,6 @@ Allow **TCP 8000/8554**, **UDP 3702** (discovery), and **UDP 8000/8001**
 manually configure the device URL in that case. No privileged ports are needed.
 
 ```sh
-sudo journalctl -u rpi-onvif-camera -u rpi-onvif-mediamtx -f
 curl http://PI_ADDRESS:8000/health
 ```
 
@@ -153,8 +129,8 @@ ffmpeg -rtsp_transport tcp -i rtsp://PI_ADDRESS:8554/camera -c copy out.mkv
 In VLC, enable *Preferences → Input/Codecs → Live555 stream transport → RTP over
 RTSP (TCP)*; in an NVR, choose TCP as the RTSP transport. If it still stutters:
 
-- Check `journalctl -u rpi-onvif-mediamtx` for `reader is too slow` (raise
-  `writeQueueSize` in `/etc/rpi-onvif-camera/mediamtx.yml`) or SRT packet-loss
+- Check the MediaMTX log for `reader is too slow` (raise `writeQueueSize` in
+  the MediaMTX configuration) or SRT packet-loss
   messages from the publisher. For lossy publisher links, add a larger SRT
   latency to the publish URL, for example `&latency=500000` (microseconds, in
   FFmpeg).
@@ -163,19 +139,19 @@ RTSP (TCP)*; in an NVR, choose TCP as the RTSP transport. If it still stutters:
 
 ### Security
 
-The supplied configuration allows anonymous ONVIF queries and RTSP viewing:
+The default configuration allows anonymous ONVIF queries and RTSP viewing:
 **use an isolated trusted camera LAN; never expose these ports to the Internet**.
 Set both ONVIF credentials to require fresh WS-Security UsernameToken
 PasswordDigest requests (plaintext PasswordText is rejected). UTC time remains
 public for client clock synchronization. This does **not** authenticate RTSP.
 
-For private viewing, replace the anonymous `read` permission in
-`/etc/rpi-onvif-camera/mediamtx.yml` with a named user/password or an IP allowlist
+For private viewing, restrict the `read` permission in the MediaMTX configuration
+with a named user/password or an IP allowlist
 using [MediaMTX authentication](https://mediamtx.org/docs/usage/authentication).
 Configure RTSP credentials separately in your client; `GetStreamUri` never embeds
 passwords. Neither HTTP nor default RTSP traffic is encrypted; use an isolated
-network or VPN even with authentication. Configuration files are installed
-root-owned, group-readable, mode 0640.
+network or VPN even with authentication. Keep `.env` readable only by the user
+running the service.
 
 ## Development
 
@@ -183,15 +159,11 @@ root-owned, group-readable, mode 0640.
 npm ci
 npm run check
 npm test
-CAMERA_ADDRESS=192.168.1.20 npm start
+cp .env.example .env
+npm start
 ```
 
-Start MediaMTX separately with `mediamtx ./deploy/mediamtx.yml`. Node tests use
+Start MediaMTX separately. Node tests use
 local ephemeral HTTP listeners and require no media tools or physical Pi.
 An actual Raspberry Pi/NVR test is still needed for performance and
 client-specific compatibility.
-
-To uninstall, disable/stop both units, remove their files from
-`/etc/systemd/system`, run `sudo systemctl daemon-reload`, and remove
-`/opt/rpi-onvif-camera`. Retain `/etc/rpi-onvif-camera` until you no longer need
-the configuration.
