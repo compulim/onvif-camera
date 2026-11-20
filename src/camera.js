@@ -349,6 +349,13 @@ function response(operation, rawArgs, config, media) {
 function createCameraServer(config) {
   const nonces = new Map();
   const server = createServer(async (req, res) => {
+    const remoteAddress = req.socket.remoteAddress;
+    let operation;
+    res.on('finish', () => {
+      if (req.url !== '/health') {
+        console.log(`ONVIF ${remoteAddress} ${req.method} ${req.url}${operation ? ` ${operation}` : ''} ${res.statusCode}`);
+      }
+    });
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok\n');
       return;
@@ -376,7 +383,7 @@ function createCameraServer(config) {
       const { Body: body, Header: header } = document.Envelope;
       const operations = Object.keys(body).filter(key => !key.startsWith('@_'));
       if (operations.length !== 1) throw new Error('Expected one SOAP operation');
-      const operation = operations[0];
+      operation = operations[0];
       if (!(req.url === '/onvif/device_service' && operation === 'GetSystemDateAndTime') &&
           !authorized(header, config, nonces)) {
         res.writeHead(401, { 'Content-Type': 'application/soap+xml; charset=utf-8' })

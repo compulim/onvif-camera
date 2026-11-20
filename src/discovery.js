@@ -91,7 +91,10 @@ function startDiscovery(config, onError = console.error) {
     allowance--;
     try {
       const id = matchesProbe(message.toString('utf8'), config);
-      if (id) send('ProbeMatches', id, remote.port, remote.address);
+      if (id) {
+        console.log(`ONVIF discovery probe from ${remote.address}:${remote.port}`);
+        send('ProbeMatches', id, remote.port, remote.address);
+      }
     } catch {
       // Ignore malformed multicast traffic from other devices.
     }
