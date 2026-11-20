@@ -11,41 +11,40 @@ source/encoder configuration queries, encoder options, and `GetStreamUri`.
 PTZ, events, snapshots, recording, and configuration writes are not implemented;
 unsupported operations return SOAP faults.
 
-## Usage
+## Quick start
 
-Requires **Node.js 22 or newer**. Run [MediaMTX](https://github.com/bluenviron/mediamtx)
-separately with a `camera` path that accepts the published stream. The sample
-[`mediamtx.yml`](mediamtx.yml) enables only what this project needs (RTSP for
-viewers, SRT for the publisher) and disables RTMP, HLS, WebRTC and MoQ. Create it
-(together with `.env`, see below) in the current directory, then run MediaMTX
-with it:
+Requires **Node.js 22 or newer**.
 
-```sh
-npx onvif-camera --init
-./mediamtx mediamtx.yml
-```
+1. Create `.env` and `mediamtx.yml` in the current directory (existing files are
+   never overwritten):
 
-Then start the ONVIF service:
+   ```sh
+   npx onvif-camera --init
+   ```
 
-```sh
-npx onvif-camera
-```
+2. If you do not already have an RTSP server, download
+   [MediaMTX](https://github.com/bluenviron/mediamtx/releases) and run it with the
+   generated configuration:
 
-Every setting has a default, so no configuration file is required. To override
-settings, set environment variables or put them in a `.env` file in the current
-working directory (loaded via [dotenv](https://github.com/motdotla/dotenv);
-variables already set in the environment take precedence). Start from
-[`.env.example`](.env.example), which `npx onvif-camera --init` copies to `./.env`
-along with `./mediamtx.yml`. Existing files are never overwritten; they are
-skipped and the remaining files are still created.
+   ```sh
+   ./mediamtx mediamtx.yml
+   ```
 
-`CAMERA_ADDRESS` defaults to the host's first non-loopback IPv4 address; set it
-explicitly on hosts with multiple interfaces (use a DHCP reservation). Set the
-`CAMERA_WIDTH`/`HEIGHT`/`FPS`/`BITRATE`/`AUDIO` values to match the published stream.
+3. Start the ONVIF service:
+
+   ```sh
+   npx onvif-camera
+   ```
+
+Then [publish a stream](#publishing-the-stream) to the `camera` path and add the
+camera to your NVR.
 
 ## Configuration
 
-See [`.env.example`](.env.example) for all settings.
+Every setting has a default. Override them in `.env` (created by `--init` from
+[`.env.example`](.env.example)) or with environment variables, which take precedence.
+`CAMERA_ADDRESS` defaults to the host's first non-loopback IPv4 address; set it
+explicitly on hosts with multiple interfaces.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -121,12 +120,23 @@ manually configure the device URL in that case. No privileged ports are needed.
 curl http://PI_ADDRESS:8000/health
 ```
 
-Windows 10/11 network camera support (for example, the Camera app) is video-only:
-it [does not support ONVIF audio streaming](https://learn.microsoft.com/windows-hardware/drivers/stream/network-cameras#unsupported-features),
-so recordings made through it have no sound even when the stream has AAC audio.
-Use an NVR or open the RTSP URL directly (for example, VLC or `ffmpeg`) to record audio.
 Many NVRs disable audio per channel by default; if there is no sound, enable
 audio in the NVR's channel or recording settings.
+
+### Compatibility notes
+
+- Not every NVR supports an RTSP stream served from a different IP address than the
+  ONVIF service. If yours does not, run MediaMTX on the same host and leave
+  `CAMERA_MEDIAMTX_ADDRESS` unset.
+- Windows 10/11 cannot discover ONVIF cameras outside the local subnet: its
+  WS-Discovery probe is sent with TTL=1, so it never crosses a router. Keep the
+  camera on the same subnet as the Windows PC.
+- Some NVRs require a username/password and an explicit port number when adding
+  the camera. Set `CAMERA_USERNAME`/`CAMERA_PASSWORD` and enter port `8000`
+  (`CAMERA_PORT`).
+- Windows 10/11 network camera support (for example, the Camera app) is video-only:
+  it [does not support audio](https://learn.microsoft.com/windows-hardware/drivers/stream/network-cameras#unsupported-features).
+  Use an NVR or open the RTSP URL directly (for example, VLC or `ffmpeg`) for audio.
 
 `/health` checks HTTP liveness only; open the RTSP URL in a client (for example,
 VLC) or check the MediaMTX log to verify the stream is being published.
