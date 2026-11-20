@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { once } from 'node:events';
 import { test } from 'node:test';
 import { createCameraServer } from '../src/camera.js';
@@ -40,27 +41,37 @@ test('configuration validates required settings and has a stable endpoint identi
   assert.equal(detected.audioSampleRate, 44100);
   assert.equal(loadConfig({ CAMERA_ADDRESS: '192.168.1.40' }, interfaces).address, '192.168.1.40');
   assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '', CAMERA_NAME: '' }).port, 8000);
-  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_NAME: '' }).name, 'Raspberry Pi Camera');
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_NAME: '' }).name, 'onvif-camera');
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: '127.0.0.1' }), /LAN/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '0' }), /CAMERA_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
   assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address }).uuid);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'http://192.168.1.30/camera' }), /CAMERA_RTSP_URL/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'rtsp://viewer@192.168.1.30/camera' }), /CAMERA_RTSP_URL/);
+  assert.deepEqual([config.rtpPort, config.rtcpPort], [8000, 8001]);
+  assert.deepEqual([config.manufacturer, config.hardwareId], ['Raspberry Pi', 'onvif-camera']);
+  assert.equal(config.firmwareVersion, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MEDIAMTX_ADDRESS: 'mediamtx.local' }), /CAMERA_MEDIAMTX_ADDRESS/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MEDIAMTX_ADDRESS: '127.0.0.1' }), /CAMERA_MEDIAMTX_ADDRESS/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_PORT: '70000' }), /CAMERA_RTSP_PORT/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTP_PORT: '8001' }), /CAMERA_RTP_PORT/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTCP_PORT: '8003' }), /CAMERA_RTCP_PORT/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_PATH: '/camera?x=1' }), /CAMERA_RTSP_PATH/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MODEL: 'x'.repeat(65) }), /CAMERA_MODEL/);
 });
 
 test('stream URL and device identity are configurable', async t => {
   const custom = loadConfig({
     CAMERA_ADDRESS: config.address,
-    CAMERA_RTSP_URL: 'rtsp://192.168.1.30/live/cam1',
+    CAMERA_MEDIAMTX_ADDRESS: '192.168.1.30',
+    CAMERA_RTSP_PORT: '554',
+    CAMERA_RTP_PORT: '9000',
+    CAMERA_RTSP_PATH: 'live/cam1',
     CAMERA_MANUFACTURER: 'Acme',
     CAMERA_MODEL: 'Cam 1',
     CAMERA_FIRMWARE_VERSION: '2.3.4',
     CAMERA_SERIAL_NUMBER: 'SN123',
     CAMERA_HARDWARE_ID: 'HW1'
   });
-  assert.equal(custom.rtspPort, 554);
+  assert.deepEqual([custom.rtspPort, custom.rtpPort, custom.rtcpPort], [554, 9000, 9001]);
   const call = await serve(t, custom);
   const info = (await call('GetDeviceInformation', '', 'device')).body.GetDeviceInformationResponse;
   assert.deepEqual(
@@ -68,7 +79,7 @@ test('stream URL and device identity are configurable', async t => {
     ['Acme', 'Cam 1', '2.3.4', 'SN123', 'HW1']
   );
   const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
-  assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.30/live/cam1');
+  assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.30:554/live/cam1');
   const scopes = (await call('GetScopes', '', 'device')).body.GetScopesResponse.Scopes.map(scope => scope.ScopeItem);
   assert.ok(scopes.includes('onvif://www.onvif.org/hardware/Cam%201'));
 });
@@ -77,7 +88,9 @@ test('device endpoints advertise only implemented services and LAN URLs', async 
   const call = await serve(t);
   const info = await call('GetDeviceInformation', '', 'device');
   assert.equal(info.status, 200);
-  assert.equal(info.body.GetDeviceInformationResponse.Model, 'Raspberry Pi');
+  assert.equal(info.body.GetDeviceInformationResponse.Model, 'Camera Module');
+  assert.equal((await call('GetHostname', '', 'device')).body.GetHostnameResponse.HostnameInformation.Name, '192.168.1.20');
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_ID: 'front-door' }).id, 'front-door');
   const capabilities = await call('GetCapabilities', '', 'device');
   assert.equal(capabilities.body.GetCapabilitiesResponse.Capabilities.Media.XAddr,
     'http://192.168.1.20:8000/onvif/media_service');

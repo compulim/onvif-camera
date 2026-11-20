@@ -14,8 +14,17 @@ unsupported operations return SOAP faults.
 ## Usage
 
 Requires **Node.js 22 or newer**. Run [MediaMTX](https://github.com/bluenviron/mediamtx)
-separately with a `camera` path that accepts the published stream, then start the
-ONVIF service:
+separately with a `camera` path that accepts the published stream. The sample
+[`mediamtx.yml`](mediamtx.yml) enables only what this project needs (RTSP for
+viewers, SRT for the publisher) and disables RTMP, HLS, WebRTC and MoQ. Download it
+next to the MediaMTX binary and run:
+
+```sh
+curl -o mediamtx.yml https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/mediamtx.yml
+./mediamtx mediamtx.yml
+```
+
+Then start the ONVIF service:
 
 ```sh
 npx onvif-camera
@@ -42,20 +51,23 @@ See [`.env.example`](.env.example) for all settings.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `CAMERA_ADDRESS` | first non-loopback IPv4 address | LAN IPv4 address advertised to clients; never localhost |
-| `CAMERA_ID` | LAN address | Unique stable identity; set this to survive address changes |
-| `CAMERA_NAME` | Raspberry Pi Camera | Display name |
-| `CAMERA_MANUFACTURER` | rpi-onvif-camera | Manufacturer reported by `GetDeviceInformation` |
-| `CAMERA_MODEL` | Raspberry Pi | Model reported by `GetDeviceInformation` and the `hardware` scope |
-| `CAMERA_FIRMWARE_VERSION` | `1.0.0` | Firmware version reported by `GetDeviceInformation` |
+| `CAMERA_ID` | `CAMERA_ADDRESS` | Unique stable identity, also reported by `GetHostname`; set this to survive address changes |
+| `CAMERA_NAME` | onvif-camera | Display name |
+| `CAMERA_MANUFACTURER` | Raspberry Pi | Manufacturer reported by `GetDeviceInformation` |
+| `CAMERA_MODEL` | Camera Module | Model reported by `GetDeviceInformation` and the `hardware` scope |
+| `CAMERA_FIRMWARE_VERSION` | `version` in `package.json` | Firmware version reported by `GetDeviceInformation` |
 | `CAMERA_SERIAL_NUMBER` | derived from `CAMERA_ID` | Serial number reported by `GetDeviceInformation` |
-| `CAMERA_HARDWARE_ID` | rpi-onvif-camera | Hardware ID reported by `GetDeviceInformation` |
+| `CAMERA_HARDWARE_ID` | onvif-camera | Hardware ID reported by `GetDeviceInformation` |
 | `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1920`, `1080` | Advertised resolution |
 | `CAMERA_FPS`, `CAMERA_BITRATE` | `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
 | `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `44100` | Advertised AAC audio bitrate (kbit/s) and sample rate (Hz, for example `48000` or `44100`) |
 | `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
 | `CAMERA_PORT` | `8000` | SOAP TCP port |
-| `CAMERA_RTSP_URL` | `rtsp://CAMERA_ADDRESS:8554/camera` | `rtsp://` or `rtsps://` stream URL returned by `GetStreamUri`; may point to another machine. Do not embed credentials |
+| `CAMERA_MEDIAMTX_ADDRESS` | `CAMERA_ADDRESS` | LAN IPv4 address of the MediaMTX server; may be another machine |
+| `CAMERA_RTSP_PORT` | `8554` | MediaMTX RTSP TCP port (`rtspAddress`), reported by `GetNetworkProtocols` |
+| `CAMERA_RTSP_PATH` | `camera` | MediaMTX path name of the stream |
+| `CAMERA_RTP_PORT`, `CAMERA_RTCP_PORT` | `8000`, `8001` | MediaMTX RTP/RTCP UDP ports (`rtpAddress`/`rtcpAddress`); RTP must be even and RTCP must be RTP + 1 |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
 | `CAMERA_USERNAME`, `CAMERA_PASSWORD` | empty | Optional ONVIF UsernameToken digest credentials; set both |
@@ -64,10 +76,12 @@ The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values
 Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
 16-bit 44.1 kHz source encoded as 128 kbit/s AAC by default).
 
-Changing the local RTSP port requires matching changes to `rtspAddress` in MediaMTX
-and `CAMERA_RTSP_URL` (or `srtAddress` for the SRT publishing port, default UDP
-8890), plus your firewall. If `CAMERA_RTSP_URL` points to another machine, a local
-MediaMTX is not needed. Restart after configuration or network-address changes.
+`GetStreamUri` returns `rtsp://CAMERA_MEDIAMTX_ADDRESS:CAMERA_RTSP_PORT/CAMERA_RTSP_PATH`.
+Changing MediaMTX ports requires matching changes to `rtspAddress`, `rtpAddress`
+and `rtcpAddress` in MediaMTX and the `CAMERA_RTSP_PORT`/`CAMERA_RTP_PORT`/`CAMERA_RTCP_PORT`
+settings (or `srtAddress` for the SRT publishing port, default UDP 8890), plus your
+firewall. If `CAMERA_MEDIAMTX_ADDRESS` points to another machine, a local MediaMTX
+is not needed. Restart after configuration or network-address changes.
 
 ### Publishing the stream
 
@@ -86,7 +100,8 @@ ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1
 ```
 
 In your MediaMTX configuration, **restrict publishing** on the `camera` path to the
-publisher's address (for example, `192.168.1.50/32`) so other LAN hosts cannot take
+publisher's address (for example, set `ips: ["192.168.1.50/32"]` on the `publish`
+entry in the sample [`mediamtx.yml`](mediamtx.yml)) so other LAN hosts cannot take
 over the stream, and allow both TCP and UDP RTSP clients. If audio is published with
 different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`/`CAMERA_AUDIO_CHANNELS`.
 
@@ -98,8 +113,9 @@ Use your NVR's ONVIF discovery on the same multicast-capable LAN, or add:
 - Media endpoint: `http://PI_ADDRESS:8000/onvif/media_service`
 - Video stream: `rtsp://PI_ADDRESS:8554/camera` (VLC, ffplay, NVR)
 
-Allow **TCP 8000/8554**, **UDP 3702** (discovery), and **UDP 8000/8001**
-(RTP/RTCP) from trusted clients only, plus **UDP 8890** (SRT) from the publisher. Multicast often does not cross VLANs;
+Allow **TCP 8000** (ONVIF) and **UDP 3702** (discovery) on this host, and **TCP 8554**
+(RTSP) and **UDP 8000/8001** (RTP/RTCP) on the MediaMTX host, from trusted clients
+only, plus **UDP 8890** (SRT) from the publisher. Multicast often does not cross VLANs;
 manually configure the device URL in that case. No privileged ports are needed.
 
 ```sh

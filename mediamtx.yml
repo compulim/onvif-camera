@@ -1,0 +1,54 @@
+# Minimal MediaMTX configuration for onvif-camera.
+# Publishers send to the "camera" path over SRT; ONVIF clients read it over RTSP.
+# Settings not listed here use MediaMTX defaults. Tested with MediaMTX v1.21.4.
+
+logLevel: info
+
+# Any LAN host may publish and read "camera". To stop other hosts from taking
+# over the stream, set the first entry's ips to the publisher's address, for
+# example ["192.168.1.50/32"]. To restrict viewers, set the second entry's ips
+# (for example ["192.168.1.0/24"]) or use a named user and password.
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path: camera
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path: camera
+
+# RTSP serves the stream to ONVIF clients (GetStreamUri).
+# Keep these ports in sync with CAMERA_RTSP_PORT, CAMERA_RTP_PORT and
+# CAMERA_RTCP_PORT. RTP must be even and RTCP must be RTP + 1.
+rtsp: true
+rtspTransports: [udp, tcp]
+rtspEncryption: "no"
+rtspAddress: :8554
+rtpAddress: :8000
+rtcpAddress: :8001
+
+# SRT receives the stream from the publisher:
+#   srt://MEDIAMTX_ADDRESS:8890?streamid=publish:camera&pkt_size=1316
+srt: true
+srtAddress: :8890
+
+# Not used by onvif-camera; enabled by MediaMTX by default.
+rtmp: false
+hls: false
+webrtc: false
+moq: false
+
+# Not used by onvif-camera; already disabled by MediaMTX by default.
+api: false
+metrics: false
+pprof: false
+playback: false
+
+paths:
+  camera:
+    source: publisher

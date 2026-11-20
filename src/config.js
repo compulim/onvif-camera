@@ -1,15 +1,21 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import * as v from 'valibot';
+
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const defaults = {
   CAMERA_BIND: '0.0.0.0',
   CAMERA_PORT: '8000',
-  CAMERA_NAME: 'Raspberry Pi Camera',
-  CAMERA_MANUFACTURER: 'rpi-onvif-camera',
-  CAMERA_MODEL: 'Raspberry Pi',
-  CAMERA_FIRMWARE_VERSION: '1.0.0',
-  CAMERA_HARDWARE_ID: 'rpi-onvif-camera',
+  CAMERA_NAME: 'onvif-camera',
+  CAMERA_MANUFACTURER: 'Raspberry Pi',
+  CAMERA_MODEL: 'Camera Module',
+  CAMERA_FIRMWARE_VERSION: version,
+  CAMERA_HARDWARE_ID: 'onvif-camera',
+  CAMERA_RTSP_PORT: '8554',
+  CAMERA_RTP_PORT: '8000',
+  CAMERA_RTSP_PATH: 'camera',
   CAMERA_WIDTH: '1920',
   CAMERA_HEIGHT: '1080',
   CAMERA_FPS: '30',
@@ -57,28 +63,34 @@ function text(name) {
   );
 }
 
-const rtspUrlMessage = 'CAMERA_RTSP_URL must be an rtsp:// or rtsps:// URL without credentials';
+function lanAddress(message) {
+  return v.pipe(
+    v.string(message),
+    v.ipv4(message),
+    v.check(address => address !== '0.0.0.0' && !address.startsWith('127.'), message)
+  );
+}
 
-const RtspUrlSchema = v.pipe(
-  v.string(rtspUrlMessage),
-  v.url(rtspUrlMessage),
-  v.transform(value => new URL(value)),
-  v.check(url => ['rtsp:', 'rtsps:'].includes(url.protocol) && url.hostname !== '' && !url.username && !url.password, rtspUrlMessage)
-);
-
-const addressMessage = 'CAMERA_ADDRESS must be the LAN IPv4 address of this host';
+const pathMessage = 'CAMERA_RTSP_PATH must be a MediaMTX path name such as "camera"';
 
 const EnvSchema = v.pipe(
   v.looseObject({
-    CAMERA_ADDRESS: v.pipe(
-      v.string(addressMessage),
-      v.ipv4(addressMessage),
-      v.check(address => address !== '0.0.0.0' && !address.startsWith('127.'), addressMessage)
-    ),
+    CAMERA_ADDRESS: lanAddress('CAMERA_ADDRESS must be the LAN IPv4 address of this host'),
     CAMERA_ID: v.string(),
     CAMERA_BIND: v.pipe(v.string(), v.ip('CAMERA_BIND must be an IP address')),
     CAMERA_PORT: integer('CAMERA_PORT', 1, 65535),
-    CAMERA_RTSP_URL: RtspUrlSchema,
+    CAMERA_MEDIAMTX_ADDRESS: lanAddress('CAMERA_MEDIAMTX_ADDRESS must be the LAN IPv4 address of the MediaMTX server'),
+    CAMERA_RTSP_PORT: integer('CAMERA_RTSP_PORT', 1, 65535),
+    CAMERA_RTP_PORT: v.pipe(
+      integer('CAMERA_RTP_PORT', 1024, 65534),
+      v.check(port => port % 2 === 0, 'CAMERA_RTP_PORT must be an even number')
+    ),
+    CAMERA_RTCP_PORT: integer('CAMERA_RTCP_PORT', 1025, 65535),
+    CAMERA_RTSP_PATH: v.pipe(
+      v.string(pathMessage),
+      v.regex(/^[\w.~-]+(?:\/[\w.~-]+)*$/, pathMessage),
+      v.maxLength(255, pathMessage)
+    ),
     CAMERA_NAME: v.string(),
     CAMERA_MANUFACTURER: text('CAMERA_MANUFACTURER'),
     CAMERA_MODEL: text('CAMERA_MODEL'),
@@ -98,6 +110,10 @@ const EnvSchema = v.pipe(
     CAMERA_PASSWORD: v.string()
   }),
   v.check(
+    env => env.CAMERA_RTCP_PORT === env.CAMERA_RTP_PORT + 1,
+    'CAMERA_RTCP_PORT must be CAMERA_RTP_PORT + 1'
+  ),
+  v.check(
     env => Boolean(env.CAMERA_USERNAME) === Boolean(env.CAMERA_PASSWORD),
     'Set both CAMERA_USERNAME and CAMERA_PASSWORD, or neither'
   )
@@ -111,21 +127,26 @@ function loadConfig(env = process.env, interfaces = networkInterfaces()) {
     ...defaults,
     CAMERA_ADDRESS: address,
     CAMERA_ID: address,
-    CAMERA_RTSP_URL: `rtsp://${address}:8554/camera`,
+    CAMERA_MEDIAMTX_ADDRESS: address,
+    CAMERA_RTCP_PORT: String(Number(set.CAMERA_RTP_PORT ?? defaults.CAMERA_RTP_PORT) + 1),
     ...set
   });
   if (!result.success) throw new Error(result.issues[0].message);
   const parsed = result.output;
-  const rtspUrl = parsed.CAMERA_RTSP_URL;
+  const rtspUrl = new URL(`rtsp://${parsed.CAMERA_MEDIAMTX_ADDRESS}:${parsed.CAMERA_RTSP_PORT}/${parsed.CAMERA_RTSP_PATH}`);
   // Keep the endpoint identity stable across service restarts.
   const identity = createHash('sha256').update(parsed.CAMERA_ID).digest('hex');
   const uuid = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-8${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
   return {
+    id: parsed.CAMERA_ID,
     address: parsed.CAMERA_ADDRESS,
     bind: parsed.CAMERA_BIND,
     port: parsed.CAMERA_PORT,
     rtspUrl: rtspUrl.href,
-    rtspPort: Number(rtspUrl.port) || (rtspUrl.protocol === 'rtsps:' ? 322 : 554),
+    mediaMtxAddress: parsed.CAMERA_MEDIAMTX_ADDRESS,
+    rtspPort: parsed.CAMERA_RTSP_PORT,
+    rtpPort: parsed.CAMERA_RTP_PORT,
+    rtcpPort: parsed.CAMERA_RTCP_PORT,
     name: parsed.CAMERA_NAME,
     manufacturer: parsed.CAMERA_MANUFACTURER,
     model: parsed.CAMERA_MODEL,
