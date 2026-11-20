@@ -1,7 +1,7 @@
 {
   "name": "onvif-camera",
   "version": "0.1.0",
-  "description": "Expose a MediaMTX stream as an emulated ONVIF camera",
+  "description": "Hosts an emulated ONVIF camera from a RTSP endpoint",
   "type": "module",
   "bin": {
     "onvif-camera": "src/index.js"
@@ -14,6 +14,12 @@
   "engines": {
     "node": ">=22"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/compulim/onvif-camera.git"
+  },
+  "author": "William Wong (https://github.com/compulim)",
+  "license": "MIT",
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",
