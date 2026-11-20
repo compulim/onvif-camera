@@ -14,8 +14,17 @@ unsupported operations return SOAP faults.
 ## Usage
 
 Requires **Node.js 22 or newer**. Run [MediaMTX](https://github.com/bluenviron/mediamtx)
-separately with a `camera` path that accepts the published stream, then start the
-ONVIF service:
+separately with a `camera` path that accepts the published stream. The sample
+[`mediamtx.yml`](mediamtx.yml) enables only what this project needs (RTSP for
+viewers, SRT for the publisher) and disables RTMP, HLS, WebRTC and MoQ. Download it
+next to the MediaMTX binary and run:
+
+```sh
+curl -o mediamtx.yml https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/mediamtx.yml
+./mediamtx mediamtx.yml
+```
+
+Then start the ONVIF service:
 
 ```sh
 npx onvif-camera
@@ -91,7 +100,8 @@ ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1
 ```
 
 In your MediaMTX configuration, **restrict publishing** on the `camera` path to the
-publisher's address (for example, `192.168.1.50/32`) so other LAN hosts cannot take
+publisher's address (for example, set `ips: ["192.168.1.50/32"]` on the `publish`
+entry in the sample [`mediamtx.yml`](mediamtx.yml)) so other LAN hosts cannot take
 over the stream, and allow both TCP and UDP RTSP clients. If audio is published with
 different settings, update `CAMERA_AUDIO_BITRATE`/`CAMERA_AUDIO_SAMPLE_RATE`/`CAMERA_AUDIO_CHANNELS`.
 
