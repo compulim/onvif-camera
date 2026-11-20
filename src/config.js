@@ -19,6 +19,24 @@ function flag(name) {
   );
 }
 
+function text(name, fallback) {
+  return v.pipe(
+    v.optional(v.string(), ''),
+    v.trim(),
+    v.transform(value => value || fallback),
+    v.maxLength(64, `${name} must be at most 64 characters`)
+  );
+}
+
+const rtspUrlMessage = 'CAMERA_RTSP_URL must be an rtsp:// or rtsps:// URL without credentials';
+
+const RtspUrlSchema = v.pipe(
+  v.string(rtspUrlMessage),
+  v.url(rtspUrlMessage),
+  v.transform(value => new URL(value)),
+  v.check(url => ['rtsp:', 'rtsps:'].includes(url.protocol) && url.hostname !== '' && !url.username && !url.password, rtspUrlMessage)
+);
+
 const addressMessage = 'CAMERA_ADDRESS must be the Raspberry Pi LAN IPv4 address';
 
 const EnvSchema = v.pipe(
@@ -35,8 +53,13 @@ const EnvSchema = v.pipe(
       v.ip('CAMERA_BIND must be an IP address')
     ),
     CAMERA_PORT: integer('CAMERA_PORT', 8000, 1, 65535),
-    CAMERA_RTSP_PORT: integer('CAMERA_RTSP_PORT', 8554, 1, 65535),
+    CAMERA_RTSP_URL: v.optional(v.string(rtspUrlMessage)),
     CAMERA_NAME: v.optional(v.string()),
+    CAMERA_MANUFACTURER: text('CAMERA_MANUFACTURER', 'rpi-onvif-camera'),
+    CAMERA_MODEL: text('CAMERA_MODEL', 'Raspberry Pi'),
+    CAMERA_FIRMWARE_VERSION: text('CAMERA_FIRMWARE_VERSION', '1.0.0'),
+    CAMERA_SERIAL_NUMBER: text('CAMERA_SERIAL_NUMBER', ''),
+    CAMERA_HARDWARE_ID: text('CAMERA_HARDWARE_ID', 'rpi-onvif-camera'),
     CAMERA_WIDTH: integer('CAMERA_WIDTH', 1920, 16, 7680),
     CAMERA_HEIGHT: integer('CAMERA_HEIGHT', 1080, 16, 4320),
     CAMERA_FPS: integer('CAMERA_FPS', 30, 1, 60),
@@ -59,14 +82,23 @@ function loadConfig(env = process.env) {
   const result = v.safeParse(EnvSchema, env);
   if (!result.success) throw new Error(result.issues[0].message);
   const parsed = result.output;
+  const rtspResult = v.safeParse(RtspUrlSchema, parsed.CAMERA_RTSP_URL || `rtsp://${parsed.CAMERA_ADDRESS}:8554/camera`);
+  if (!rtspResult.success) throw new Error(rtspResult.issues[0].message);
+  const rtspUrl = rtspResult.output;
   // Keep the endpoint identity stable across service restarts.
   const identity = createHash('sha256').update(parsed.CAMERA_ID || parsed.CAMERA_ADDRESS).digest('hex');
+  const uuid = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-8${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
   return {
     address: parsed.CAMERA_ADDRESS,
     bind: parsed.CAMERA_BIND,
     port: parsed.CAMERA_PORT,
-    rtspPort: parsed.CAMERA_RTSP_PORT,
+    rtspUrl: rtspUrl.href,
+    rtspPort: Number(rtspUrl.port) || (rtspUrl.protocol === 'rtsps:' ? 322 : 554),
     name: parsed.CAMERA_NAME || 'Raspberry Pi Camera',
+    manufacturer: parsed.CAMERA_MANUFACTURER,
+    model: parsed.CAMERA_MODEL,
+    firmwareVersion: parsed.CAMERA_FIRMWARE_VERSION,
+    hardwareId: parsed.CAMERA_HARDWARE_ID,
     width: parsed.CAMERA_WIDTH,
     height: parsed.CAMERA_HEIGHT,
     fps: parsed.CAMERA_FPS,
@@ -78,7 +110,8 @@ function loadConfig(env = process.env) {
     discovery: parsed.CAMERA_DISCOVERY,
     username: parsed.CAMERA_USERNAME,
     password: parsed.CAMERA_PASSWORD,
-    uuid: `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-8${identity.slice(17, 20)}-${identity.slice(20, 32)}`
+    serialNumber: parsed.CAMERA_SERIAL_NUMBER || uuid,
+    uuid
   };
 }
 
