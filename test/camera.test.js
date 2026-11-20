@@ -89,6 +89,8 @@ test('device endpoints advertise only implemented services and LAN URLs', async 
   const info = await call('GetDeviceInformation', '', 'device');
   assert.equal(info.status, 200);
   assert.equal(info.body.GetDeviceInformationResponse.Model, 'Camera Module');
+  assert.equal((await call('GetHostname', '', 'device')).body.GetHostnameResponse.HostnameInformation.Name, '192.168.1.20');
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_ID: 'front-door' }).id, 'front-door');
   const capabilities = await call('GetCapabilities', '', 'device');
   assert.equal(capabilities.body.GetCapabilitiesResponse.Capabilities.Media.XAddr,
     'http://192.168.1.20:8000/onvif/media_service');

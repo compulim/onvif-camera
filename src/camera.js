@@ -311,7 +311,7 @@ function response(operation, rawArgs, config, media) {
         'tds:Scopes': cameraScopes(config).map(scope => ({ 'tt:ScopeDef': 'Fixed', 'tt:ScopeItem': scope }))
       });
     case 'GetHostname':
-      return wrap({ 'tds:HostnameInformation': { 'tt:FromDHCP': 'false', 'tt:Name': 'rpi-onvif-camera' } });
+      return wrap({ 'tds:HostnameInformation': { 'tt:FromDHCP': 'false', 'tt:Name': config.id } });
     case 'GetDiscoveryMode':
       return wrap({ 'tds:DiscoveryMode': config.discovery ? 'Discoverable' : 'NonDiscoverable' });
     case 'GetServiceCapabilities':

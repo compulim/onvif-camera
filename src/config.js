@@ -138,6 +138,7 @@ function loadConfig(env = process.env, interfaces = networkInterfaces()) {
   const identity = createHash('sha256').update(parsed.CAMERA_ID).digest('hex');
   const uuid = `${identity.slice(0, 8)}-${identity.slice(8, 12)}-4${identity.slice(13, 16)}-8${identity.slice(17, 20)}-${identity.slice(20, 32)}`;
   return {
+    id: parsed.CAMERA_ID,
     address: parsed.CAMERA_ADDRESS,
     bind: parsed.CAMERA_BIND,
     port: parsed.CAMERA_PORT,
