@@ -34,10 +34,11 @@ Every setting has a default, so no configuration file is required. To override
 settings, set environment variables or put them in a `.env` file in the current
 working directory (loaded via [dotenv](https://github.com/motdotla/dotenv);
 variables already set in the environment take precedence). Start from
-[`.env.example`](.env.example):
+[`.env.example`](.env.example), which `--init` copies to `./.env` (an existing
+`.env` is never overwritten):
 
 ```sh
-curl -o .env https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/.env.example
+npx onvif-camera --init
 ```
 
 `CAMERA_ADDRESS` defaults to the host's first non-loopback IPv4 address; set it
