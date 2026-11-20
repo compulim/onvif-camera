@@ -1,6 +1,6 @@
 {
   "name": "onvif-camera",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Expose a MediaMTX stream as an emulated ONVIF camera",
   "type": "module",
   "bin": {
