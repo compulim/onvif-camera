@@ -2,17 +2,25 @@ import { constants } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const exampleUrl = new URL('../.env.example', import.meta.url);
+const templates = [
+  ['.env.example', '.env'],
+  ['mediamtx.yml', 'mediamtx.yml']
+];
 
-async function initEnv(cwd = process.cwd()) {
-  const target = resolve(cwd, '.env');
-  try {
-    await copyFile(exampleUrl, target, constants.COPYFILE_EXCL);
-  } catch (error) {
-    if (error.code === 'EEXIST') throw new Error(`${target} already exists; not overwriting.`);
-    throw error;
+async function initFiles(cwd = process.cwd()) {
+  const created = [];
+  const skipped = [];
+  for (const [source, name] of templates) {
+    const target = resolve(cwd, name);
+    try {
+      await copyFile(new URL(`../${source}`, import.meta.url), target, constants.COPYFILE_EXCL);
+      created.push(target);
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      skipped.push(target);
+    }
   }
-  return target;
+  return { created, skipped };
 }
 
-export { initEnv };
+export { initFiles };

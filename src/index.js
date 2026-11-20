@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { createCameraServer, deviceUrl } from './camera.js';
 import { loadConfig } from './config.js';
 import { startDiscovery } from './discovery.js';
-import { initEnv } from './init.js';
+import { initFiles } from './init.js';
 
 let server;
 let discovery;
@@ -26,7 +26,9 @@ async function shutdown(error) {
 
 if (process.argv.includes('--init')) {
   try {
-    console.log(`Created ${await initEnv()} from .env.example`);
+    const { created, skipped } = await initFiles();
+    for (const file of created) console.log(`Created ${file}`);
+    for (const file of skipped) console.warn(`Skipped ${file}: already exists; not overwriting.`);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

@@ -16,11 +16,12 @@ unsupported operations return SOAP faults.
 Requires **Node.js 22 or newer**. Run [MediaMTX](https://github.com/bluenviron/mediamtx)
 separately with a `camera` path that accepts the published stream. The sample
 [`mediamtx.yml`](mediamtx.yml) enables only what this project needs (RTSP for
-viewers, SRT for the publisher) and disables RTMP, HLS, WebRTC and MoQ. Download it
-next to the MediaMTX binary and run:
+viewers, SRT for the publisher) and disables RTMP, HLS, WebRTC and MoQ. Create it
+(together with `.env`, see below) in the current directory, then run MediaMTX
+with it:
 
 ```sh
-curl -o mediamtx.yml https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/mediamtx.yml
+npx onvif-camera --init
 ./mediamtx mediamtx.yml
 ```
 
@@ -34,12 +35,9 @@ Every setting has a default, so no configuration file is required. To override
 settings, set environment variables or put them in a `.env` file in the current
 working directory (loaded via [dotenv](https://github.com/motdotla/dotenv);
 variables already set in the environment take precedence). Start from
-[`.env.example`](.env.example), which `--init` copies to `./.env` (an existing
-`.env` is never overwritten):
-
-```sh
-npx onvif-camera --init
-```
+[`.env.example`](.env.example), which `npx onvif-camera --init` copies to `./.env`
+along with `./mediamtx.yml`. Existing files are never overwritten; they are
+skipped and the remaining files are still created.
 
 `CAMERA_ADDRESS` defaults to the host's first non-loopback IPv4 address; set it
 explicitly on hosts with multiple interfaces (use a DHCP reservation). Set the

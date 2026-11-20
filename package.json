@@ -8,7 +8,8 @@
   },
   "files": [
     "src/",
-    ".env.example"
+    ".env.example",
+    "mediamtx.yml"
   ],
   "engines": {
     "node": ">=22"
