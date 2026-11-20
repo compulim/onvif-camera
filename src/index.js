@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+import 'dotenv/config';
 import { once } from 'node:events';
 import { createCameraServer, deviceUrl } from './camera.js';
 import { loadConfig } from './config.js';

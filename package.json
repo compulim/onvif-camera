@@ -1,9 +1,15 @@
 {
-  "name": "rpi-onvif-camera",
+  "name": "onvif-camera",
   "version": "1.0.0",
   "description": "Expose a MediaMTX stream as an emulated ONVIF camera",
-  "private": true,
   "type": "module",
+  "bin": {
+    "onvif-camera": "src/index.js"
+  },
+  "files": [
+    "src/",
+    ".env.example"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -15,6 +21,7 @@
   "keywords": [],
   "author": "",
   "dependencies": {
+    "dotenv": "18.0.10",
     "fast-xml-parser": "5.12.0",
     "valibot": "1.5.0"
   }
