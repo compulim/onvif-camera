@@ -88,7 +88,7 @@ test('device endpoints advertise only implemented services and LAN URLs', async 
   const call = await serve(t);
   const info = await call('GetDeviceInformation', '', 'device');
   assert.equal(info.status, 200);
-  assert.equal(info.body.GetDeviceInformationResponse.Model, 'Raspberry Pi');
+  assert.equal(info.body.GetDeviceInformationResponse.Model, 'Camera Module');
   const capabilities = await call('GetCapabilities', '', 'device');
   assert.equal(capabilities.body.GetCapabilitiesResponse.Capabilities.Media.XAddr,
     'http://192.168.1.20:8000/onvif/media_service');

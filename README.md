@@ -54,7 +54,7 @@ See [`.env.example`](.env.example) for all settings.
 | `CAMERA_ID` | LAN address | Unique stable identity; set this to survive address changes |
 | `CAMERA_NAME` | Raspberry Pi Camera | Display name |
 | `CAMERA_MANUFACTURER` | Raspberry Pi | Manufacturer reported by `GetDeviceInformation` |
-| `CAMERA_MODEL` | Raspberry Pi | Model reported by `GetDeviceInformation` and the `hardware` scope |
+| `CAMERA_MODEL` | Camera Module | Model reported by `GetDeviceInformation` and the `hardware` scope |
 | `CAMERA_FIRMWARE_VERSION` | `version` in `package.json` | Firmware version reported by `GetDeviceInformation` |
 | `CAMERA_SERIAL_NUMBER` | derived from `CAMERA_ID` | Serial number reported by `GetDeviceInformation` |
 | `CAMERA_HARDWARE_ID` | onvif-camera | Hardware ID reported by `GetDeviceInformation` |

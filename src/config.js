@@ -10,7 +10,7 @@ const defaults = {
   CAMERA_PORT: '8000',
   CAMERA_NAME: 'Raspberry Pi Camera',
   CAMERA_MANUFACTURER: 'Raspberry Pi',
-  CAMERA_MODEL: 'Raspberry Pi',
+  CAMERA_MODEL: 'Camera Module',
   CAMERA_FIRMWARE_VERSION: version,
   CAMERA_HARDWARE_ID: 'onvif-camera',
   CAMERA_RTSP_PORT: '8554',
