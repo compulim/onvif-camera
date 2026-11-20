@@ -18,7 +18,7 @@
     "type": "git",
     "url": "https://github.com/compulim/onvif-camera.git"
   },
-  "author": "",
+  "author": "William Wong (https://github.com/compulim)",
   "license": "MIT",
   "scripts": {
     "start": "node src/index.js",
