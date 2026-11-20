@@ -54,12 +54,18 @@ or shell substitutions.
 | `CAMERA_ADDRESS` | required | LAN IPv4 address advertised to clients; never localhost |
 | `CAMERA_ID` | LAN address | Unique stable identity; set this to survive address changes |
 | `CAMERA_NAME` | Raspberry Pi Camera | Display name |
+| `CAMERA_MANUFACTURER` | rpi-onvif-camera | Manufacturer reported by `GetDeviceInformation` |
+| `CAMERA_MODEL` | Raspberry Pi | Model reported by `GetDeviceInformation` and the `hardware` scope |
+| `CAMERA_FIRMWARE_VERSION` | `1.0.0` | Firmware version reported by `GetDeviceInformation` |
+| `CAMERA_SERIAL_NUMBER` | derived from `CAMERA_ID` | Serial number reported by `GetDeviceInformation` |
+| `CAMERA_HARDWARE_ID` | rpi-onvif-camera | Hardware ID reported by `GetDeviceInformation` |
 | `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1920`, `1080` | Advertised resolution |
 | `CAMERA_FPS`, `CAMERA_BITRATE` | `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
 | `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48000` | Advertised AAC audio bitrate (kbit/s) and sample rate (Hz, for example `48000` or `44100`) |
 | `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
-| `CAMERA_PORT`, `CAMERA_RTSP_PORT` | `8000`, `8554` | SOAP and RTSP TCP ports |
+| `CAMERA_PORT` | `8000` | SOAP TCP port |
+| `CAMERA_RTSP_URL` | `rtsp://CAMERA_ADDRESS:8554/camera` | `rtsp://` or `rtsps://` stream URL returned by `GetStreamUri`; may point to another machine. Do not embed credentials |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
 | `CAMERA_USERNAME`, `CAMERA_PASSWORD` | empty | Optional ONVIF UsernameToken digest credentials; set both |
@@ -68,8 +74,10 @@ The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values
 Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
 16-bit 48 kHz source encoded as 128 kbit/s AAC by default).
 
-Changing ports requires matching changes to `rtspAddress` (or `srtAddress` for
-the SRT publishing port, default UDP 8890) in MediaMTX and your firewall. Restart after configuration or network-address changes:
+Changing the local RTSP port requires matching changes to `rtspAddress` in MediaMTX
+and `CAMERA_RTSP_URL` (or `srtAddress` for the SRT publishing port, default UDP
+8890), plus your firewall. If `CAMERA_RTSP_URL` points to another machine, the local
+MediaMTX service is not needed. Restart after configuration or network-address changes:
 
 ```sh
 sudo systemctl restart rpi-onvif-mediamtx.service rpi-onvif-camera.service

@@ -34,6 +34,32 @@ test('configuration validates required settings and has a stable endpoint identi
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '0' }), /CAMERA_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
   assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address }).uuid);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'http://192.168.1.30/camera' }), /CAMERA_RTSP_URL/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'rtsp://viewer@192.168.1.30/camera' }), /CAMERA_RTSP_URL/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MODEL: 'x'.repeat(65) }), /CAMERA_MODEL/);
+});
+
+test('stream URL and device identity are configurable', async t => {
+  const custom = loadConfig({
+    CAMERA_ADDRESS: config.address,
+    CAMERA_RTSP_URL: 'rtsp://192.168.1.30/live/cam1',
+    CAMERA_MANUFACTURER: 'Acme',
+    CAMERA_MODEL: 'Cam 1',
+    CAMERA_FIRMWARE_VERSION: '2.3.4',
+    CAMERA_SERIAL_NUMBER: 'SN123',
+    CAMERA_HARDWARE_ID: 'HW1'
+  });
+  assert.equal(custom.rtspPort, 554);
+  const call = await serve(t, custom);
+  const info = (await call('GetDeviceInformation', '', 'device')).body.GetDeviceInformationResponse;
+  assert.deepEqual(
+    [info.Manufacturer, info.Model, String(info.FirmwareVersion), info.SerialNumber, info.HardwareId],
+    ['Acme', 'Cam 1', '2.3.4', 'SN123', 'HW1']
+  );
+  const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
+  assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.30/live/cam1');
+  const scopes = (await call('GetScopes', '', 'device')).body.GetScopesResponse.Scopes.map(scope => scope.ScopeItem);
+  assert.ok(scopes.includes('onvif://www.onvif.org/hardware/Cam%201'));
 });
 
 test('device endpoints advertise only implemented services and LAN URLs', async t => {

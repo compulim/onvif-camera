@@ -5,8 +5,7 @@ import { authorized, envelope, fault, parseXml, TextSchema } from './soap.js';
 const profileToken = 'main';
 const scopes = [
   'onvif://www.onvif.org/type/video_encoder',
-  'onvif://www.onvif.org/Profile/Streaming',
-  'onvif://www.onvif.org/hardware/RaspberryPi'
+  'onvif://www.onvif.org/Profile/Streaming'
 ];
 
 const StreamSetupSchema = v.looseObject({
@@ -38,6 +37,7 @@ function cameraScopes(config) {
   return [
     ...scopes,
     ...(config.audio ? ['onvif://www.onvif.org/type/audio_encoder'] : []),
+    `onvif://www.onvif.org/hardware/${encodeURIComponent(config.model)}`,
     `onvif://www.onvif.org/name/${encodeURIComponent(config.name)}`
   ];
 }
@@ -211,7 +211,7 @@ function response(operation, rawArgs, config, media) {
         }
         return wrap({
           'trt:MediaUri': {
-            'tt:Uri': `rtsp://${config.address}:${config.rtspPort}/camera`,
+            'tt:Uri': config.rtspUrl,
             'tt:InvalidAfterConnect': 'false',
             'tt:InvalidAfterReboot': 'false',
             'tt:Timeout': 'PT0S'
@@ -278,11 +278,11 @@ function response(operation, rawArgs, config, media) {
   switch (operation) {
     case 'GetDeviceInformation':
       return wrap({
-        'tds:Manufacturer': 'rpi-onvif-camera',
-        'tds:Model': 'Raspberry Pi',
-        'tds:FirmwareVersion': '1.0.0',
-        'tds:SerialNumber': config.uuid,
-        'tds:HardwareId': 'rpi-onvif-camera'
+        'tds:Manufacturer': config.manufacturer,
+        'tds:Model': config.model,
+        'tds:FirmwareVersion': config.firmwareVersion,
+        'tds:SerialNumber': config.serialNumber,
+        'tds:HardwareId': config.hardwareId
       });
     case 'GetSystemDateAndTime':
       return wrap({
