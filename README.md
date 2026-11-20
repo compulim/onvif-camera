@@ -1,4 +1,4 @@
-# rpi-onvif-camera
+# onvif-camera
 
 Emulate a fixed, read-only ONVIF camera on Raspberry Pi OS or another
 Linux host. Another device publishes an H.264 (optionally AAC) stream to MediaMTX
@@ -20,7 +20,7 @@ ONVIF service from a directory containing your `.env` file:
 ```sh
 curl -o .env https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/.env.example
 nano .env
-npx rpi-onvif-camera
+npx onvif-camera
 ```
 
 Set `CAMERA_ADDRESS` to the host's LAN IPv4 address (use a DHCP reservation) and
