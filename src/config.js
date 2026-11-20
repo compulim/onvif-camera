@@ -8,7 +8,7 @@ const { version } = JSON.parse(readFileSync(new URL('../package.json', import.me
 const defaults = {
   CAMERA_BIND: '0.0.0.0',
   CAMERA_PORT: '8000',
-  CAMERA_NAME: 'Raspberry Pi Camera',
+  CAMERA_NAME: 'onvif-camera',
   CAMERA_MANUFACTURER: 'Raspberry Pi',
   CAMERA_MODEL: 'Camera Module',
   CAMERA_FIRMWARE_VERSION: version,

@@ -52,7 +52,7 @@ See [`.env.example`](.env.example) for all settings.
 | --- | --- | --- |
 | `CAMERA_ADDRESS` | first non-loopback IPv4 address | LAN IPv4 address advertised to clients; never localhost |
 | `CAMERA_ID` | `CAMERA_ADDRESS` | Unique stable identity, also reported by `GetHostname`; set this to survive address changes |
-| `CAMERA_NAME` | Raspberry Pi Camera | Display name |
+| `CAMERA_NAME` | onvif-camera | Display name |
 | `CAMERA_MANUFACTURER` | Raspberry Pi | Manufacturer reported by `GetDeviceInformation` |
 | `CAMERA_MODEL` | Camera Module | Model reported by `GetDeviceInformation` and the `hardware` scope |
 | `CAMERA_FIRMWARE_VERSION` | `version` in `package.json` | Firmware version reported by `GetDeviceInformation` |

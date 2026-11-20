@@ -41,7 +41,7 @@ test('configuration validates required settings and has a stable endpoint identi
   assert.equal(detected.audioSampleRate, 44100);
   assert.equal(loadConfig({ CAMERA_ADDRESS: '192.168.1.40' }, interfaces).address, '192.168.1.40');
   assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '', CAMERA_NAME: '' }).port, 8000);
-  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_NAME: '' }).name, 'Raspberry Pi Camera');
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_NAME: '' }).name, 'onvif-camera');
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: '127.0.0.1' }), /LAN/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '0' }), /CAMERA_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
