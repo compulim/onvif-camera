@@ -15,19 +15,25 @@ unsupported operations return SOAP faults.
 
 Requires **Node.js 22 or newer**. Run [MediaMTX](https://github.com/bluenviron/mediamtx)
 separately with a `camera` path that accepts the published stream, then start the
-ONVIF service from a directory containing your `.env` file:
+ONVIF service:
 
 ```sh
-curl -o .env https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/.env.example
-nano .env
 npx onvif-camera
 ```
 
-Set `CAMERA_ADDRESS` to the host's LAN IPv4 address (use a DHCP reservation) and
-the `CAMERA_WIDTH`/`HEIGHT`/`FPS`/`BITRATE`/`AUDIO` values to match the published
-stream. Settings are loaded from `.env` in the current working directory via
-[dotenv](https://github.com/motdotla/dotenv); variables already set in the
-environment take precedence.
+Every setting has a default, so no configuration file is required. To override
+settings, set environment variables or put them in a `.env` file in the current
+working directory (loaded via [dotenv](https://github.com/motdotla/dotenv);
+variables already set in the environment take precedence). Start from
+[`.env.example`](.env.example):
+
+```sh
+curl -o .env https://raw.githubusercontent.com/compulim/rpi-onvif-camera/main/.env.example
+```
+
+`CAMERA_ADDRESS` defaults to the host's first non-loopback IPv4 address; set it
+explicitly on hosts with multiple interfaces (use a DHCP reservation). Set the
+`CAMERA_WIDTH`/`HEIGHT`/`FPS`/`BITRATE`/`AUDIO` values to match the published stream.
 
 ## Configuration
 
@@ -35,7 +41,7 @@ See [`.env.example`](.env.example) for all settings.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `CAMERA_ADDRESS` | required | LAN IPv4 address advertised to clients; never localhost |
+| `CAMERA_ADDRESS` | first non-loopback IPv4 address | LAN IPv4 address advertised to clients; never localhost |
 | `CAMERA_ID` | LAN address | Unique stable identity; set this to survive address changes |
 | `CAMERA_NAME` | Raspberry Pi Camera | Display name |
 | `CAMERA_MANUFACTURER` | rpi-onvif-camera | Manufacturer reported by `GetDeviceInformation` |
@@ -46,7 +52,7 @@ See [`.env.example`](.env.example) for all settings.
 | `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1920`, `1080` | Advertised resolution |
 | `CAMERA_FPS`, `CAMERA_BITRATE` | `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
 | `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
-| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `48000` | Advertised AAC audio bitrate (kbit/s) and sample rate (Hz, for example `48000` or `44100`) |
+| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `44100` | Advertised AAC audio bitrate (kbit/s) and sample rate (Hz, for example `48000` or `44100`) |
 | `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
 | `CAMERA_PORT` | `8000` | SOAP TCP port |
 | `CAMERA_RTSP_URL` | `rtsp://CAMERA_ADDRESS:8554/camera` | `rtsp://` or `rtsps://` stream URL returned by `GetStreamUri`; may point to another machine. Do not embed credentials |
@@ -56,7 +62,7 @@ See [`.env.example`](.env.example) for all settings.
 
 The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values.
 Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
-16-bit 48 kHz source encoded as 128 kbit/s AAC by default).
+16-bit 44.1 kHz source encoded as 128 kbit/s AAC by default).
 
 Changing the local RTSP port requires matching changes to `rtspAddress` in MediaMTX
 and `CAMERA_RTSP_URL` (or `srtAddress` for the SRT publishing port, default UDP
@@ -76,7 +82,7 @@ To loop an MP4 and re-encode it to match the default advertised profile
 (1920x1080 at 30 FPS, 20 Mbit/s):
 
 ```sh
-ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 20000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 48000 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
+ffmpeg -re -stream_loop -1 -i "input.mp4" -map 0:v:0 -map 0:a:0 -vf scale=1920:1080,fps=30 -c:v libx264 -preset veryfast -profile:v main -pix_fmt yuv420p -b:v 20000k -g 30 -bf 0 -c:a aac -b:a 128k -ar 44100 -ac 2 -f mpegts "srt://PI_ADDRESS:8890?streamid=publish:camera&pkt_size=1316"
 ```
 
 In your MediaMTX configuration, **restrict publishing** on the `camera` path to the
@@ -159,7 +165,6 @@ running the service.
 npm ci
 npm run check
 npm test
-cp .env.example .env
 npm start
 ```
 

@@ -29,7 +29,18 @@ async function serve(t, options = config) {
 }
 
 test('configuration validates required settings and has a stable endpoint identity', () => {
-  assert.throws(() => loadConfig({}), /CAMERA_ADDRESS/);
+  assert.throws(() => loadConfig({}, {}), /CAMERA_ADDRESS/);
+  const interfaces = {
+    lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+    eth0: [{ address: 'fe80::1', family: 'IPv6', internal: false }, { address: '192.168.1.30', family: 'IPv4', internal: false }]
+  };
+  const detected = loadConfig({}, interfaces);
+  assert.equal(detected.address, '192.168.1.30');
+  assert.equal(detected.rtspUrl, 'rtsp://192.168.1.30:8554/camera');
+  assert.equal(detected.audioSampleRate, 44100);
+  assert.equal(loadConfig({ CAMERA_ADDRESS: '192.168.1.40' }, interfaces).address, '192.168.1.40');
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '', CAMERA_NAME: '' }).port, 8000);
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_NAME: '' }).name, 'Raspberry Pi Camera');
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: '127.0.0.1' }), /LAN/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '0' }), /CAMERA_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
@@ -88,7 +99,7 @@ test('media profile and URI describe the configured H264/AAC stream', async t =>
   assert.equal(profile.VideoEncoderConfiguration.Resolution.Width, '1920');
   assert.equal(profile.AudioEncoderConfiguration.Encoding, 'AAC');
   assert.equal(Number(profile.AudioEncoderConfiguration.Bitrate), 128);
-  assert.equal(Number(profile.AudioEncoderConfiguration.SampleRate), 48);
+  assert.equal(Number(profile.AudioEncoderConfiguration.SampleRate), 44);
   assert.equal(Number((await call('GetAudioSources')).body.GetAudioSourcesResponse.AudioSources.Channels), 2);
   assert.match((await call('GetScopes', '', 'device')).xml, /onvif:\/\/www\.onvif\.org\/type\/audio_encoder/);
   const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
@@ -197,10 +208,10 @@ test('audio encoder settings are configurable', async t => {
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '0' }), /CAMERA_AUDIO_BITRATE/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_CHANNELS: '3' }), /CAMERA_AUDIO_CHANNELS/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_SAMPLE_RATE: '48' }), /CAMERA_AUDIO_SAMPLE_RATE/);
-  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '64', CAMERA_AUDIO_SAMPLE_RATE: '44100', CAMERA_AUDIO_CHANNELS: '1' }));
+  const call = await serve(t, loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_AUDIO_BITRATE: '64', CAMERA_AUDIO_SAMPLE_RATE: '48000', CAMERA_AUDIO_CHANNELS: '1' }));
   assert.equal(Number((await call('GetAudioSources')).body.GetAudioSourcesResponse.AudioSources.Channels), 1);
   const options = (await call('GetAudioEncoderConfigurationOptions')).body.GetAudioEncoderConfigurationOptionsResponse.Options.Options;
   assert.equal(options.Encoding, 'AAC');
   assert.equal(Number(options.BitrateList.Items), 64);
-  assert.equal(Number(options.SampleRateList.Items), 44);
+  assert.equal(Number(options.SampleRateList.Items), 48);
 });
