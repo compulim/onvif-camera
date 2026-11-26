@@ -45,7 +45,7 @@ if (process.argv.includes('--init')) {
     if (!stopping) {
       if (config.discovery) discovery = startDiscovery(config, error => void shutdown(error));
       console.log(`ONVIF camera listening at ${deviceUrl(config)}`);
-      console.log(`Advertising MediaMTX stream at ${config.rtspUrl} (RTP/RTCP UDP ports ${config.rtpPort}/${config.rtcpPort})`);
+      console.log(`Advertising MediaMTX stream at ${config.rtspUrl}`);
       if (!config.username) console.warn('ONVIF authentication is disabled. Use only on a trusted LAN.');
     }
   } catch (error) {

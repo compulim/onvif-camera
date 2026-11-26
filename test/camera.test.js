@@ -46,14 +46,11 @@ test('configuration validates required settings and has a stable endpoint identi
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_PORT: '0' }), /CAMERA_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_USERNAME: 'camera' }), /both/);
   assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address }).uuid);
-  assert.deepEqual([config.rtpPort, config.rtcpPort], [8000, 8001]);
   assert.deepEqual([config.manufacturer, config.hardwareId], ['Raspberry Pi', 'onvif-camera']);
   assert.equal(config.firmwareVersion, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MEDIAMTX_ADDRESS: 'mediamtx.local' }), /CAMERA_MEDIAMTX_ADDRESS/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MEDIAMTX_ADDRESS: '127.0.0.1' }), /CAMERA_MEDIAMTX_ADDRESS/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_PORT: '70000' }), /CAMERA_RTSP_PORT/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTP_PORT: '8001' }), /CAMERA_RTP_PORT/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTCP_PORT: '8003' }), /CAMERA_RTCP_PORT/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_PATH: '/camera?x=1' }), /CAMERA_RTSP_PATH/);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MODEL: 'x'.repeat(65) }), /CAMERA_MODEL/);
 });
@@ -63,7 +60,6 @@ test('stream URL and device identity are configurable', async t => {
     CAMERA_ADDRESS: config.address,
     CAMERA_MEDIAMTX_ADDRESS: '192.168.1.30',
     CAMERA_RTSP_PORT: '554',
-    CAMERA_RTP_PORT: '9000',
     CAMERA_RTSP_PATH: 'live/cam1',
     CAMERA_MANUFACTURER: 'Acme',
     CAMERA_MODEL: 'Cam 1',
@@ -71,7 +67,7 @@ test('stream URL and device identity are configurable', async t => {
     CAMERA_SERIAL_NUMBER: 'SN123',
     CAMERA_HARDWARE_ID: 'HW1'
   });
-  assert.deepEqual([custom.rtspPort, custom.rtpPort, custom.rtcpPort], [554, 9000, 9001]);
+  assert.equal(custom.rtspPort, 554);
   const call = await serve(t, custom);
   const info = (await call('GetDeviceInformation', '', 'device')).body.GetDeviceInformationResponse;
   assert.deepEqual(
