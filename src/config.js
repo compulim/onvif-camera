@@ -14,7 +14,6 @@ const defaults = {
   CAMERA_FIRMWARE_VERSION: version,
   CAMERA_HARDWARE_ID: 'onvif-camera',
   CAMERA_RTSP_PORT: '8554',
-  CAMERA_RTP_PORT: '8000',
   CAMERA_RTSP_PATH: 'camera',
   CAMERA_WIDTH: '1920',
   CAMERA_HEIGHT: '1080',
@@ -81,11 +80,6 @@ const EnvSchema = v.pipe(
     CAMERA_PORT: integer('CAMERA_PORT', 1, 65535),
     CAMERA_MEDIAMTX_ADDRESS: lanAddress('CAMERA_MEDIAMTX_ADDRESS must be the LAN IPv4 address of the MediaMTX server'),
     CAMERA_RTSP_PORT: integer('CAMERA_RTSP_PORT', 1, 65535),
-    CAMERA_RTP_PORT: v.pipe(
-      integer('CAMERA_RTP_PORT', 1024, 65534),
-      v.check(port => port % 2 === 0, 'CAMERA_RTP_PORT must be an even number')
-    ),
-    CAMERA_RTCP_PORT: integer('CAMERA_RTCP_PORT', 1025, 65535),
     CAMERA_RTSP_PATH: v.pipe(
       v.string(pathMessage),
       v.regex(/^[\w.~-]+(?:\/[\w.~-]+)*$/, pathMessage),
@@ -110,10 +104,6 @@ const EnvSchema = v.pipe(
     CAMERA_PASSWORD: v.string()
   }),
   v.check(
-    env => env.CAMERA_RTCP_PORT === env.CAMERA_RTP_PORT + 1,
-    'CAMERA_RTCP_PORT must be CAMERA_RTP_PORT + 1'
-  ),
-  v.check(
     env => Boolean(env.CAMERA_USERNAME) === Boolean(env.CAMERA_PASSWORD),
     'Set both CAMERA_USERNAME and CAMERA_PASSWORD, or neither'
   )
@@ -128,7 +118,6 @@ function loadConfig(env = process.env, interfaces = networkInterfaces()) {
     CAMERA_ADDRESS: address,
     CAMERA_ID: address,
     CAMERA_MEDIAMTX_ADDRESS: address,
-    CAMERA_RTCP_PORT: String(Number(set.CAMERA_RTP_PORT ?? defaults.CAMERA_RTP_PORT) + 1),
     ...set
   });
   if (!result.success) throw new Error(result.issues[0].message);
@@ -145,8 +134,6 @@ function loadConfig(env = process.env, interfaces = networkInterfaces()) {
     rtspUrl: rtspUrl.href,
     mediaMtxAddress: parsed.CAMERA_MEDIAMTX_ADDRESS,
     rtspPort: parsed.CAMERA_RTSP_PORT,
-    rtpPort: parsed.CAMERA_RTP_PORT,
-    rtcpPort: parsed.CAMERA_RTCP_PORT,
     name: parsed.CAMERA_NAME,
     manufacturer: parsed.CAMERA_MANUFACTURER,
     model: parsed.CAMERA_MODEL,

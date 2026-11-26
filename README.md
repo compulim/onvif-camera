@@ -65,7 +65,6 @@ explicitly on hosts with multiple interfaces.
 | `CAMERA_MEDIAMTX_ADDRESS` | `CAMERA_ADDRESS` | LAN IPv4 address of the MediaMTX server; may be another machine |
 | `CAMERA_RTSP_PORT` | `8554` | MediaMTX RTSP TCP port (`rtspAddress`), reported by `GetNetworkProtocols` |
 | `CAMERA_RTSP_PATH` | `camera` | MediaMTX path name of the stream |
-| `CAMERA_RTP_PORT`, `CAMERA_RTCP_PORT` | `8000`, `8001` | MediaMTX RTP/RTCP UDP ports (`rtpAddress`/`rtcpAddress`); RTP must be even and RTCP must be RTP + 1 |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
 | `CAMERA_USERNAME`, `CAMERA_PASSWORD` | empty | Optional ONVIF UsernameToken digest credentials; set both |
@@ -75,10 +74,9 @@ Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
 16-bit 44.1 kHz source encoded as 128 kbit/s AAC by default).
 
 `GetStreamUri` returns `rtsp://CAMERA_MEDIAMTX_ADDRESS:CAMERA_RTSP_PORT/CAMERA_RTSP_PATH`.
-Changing MediaMTX ports requires matching changes to `rtspAddress`, `rtpAddress`
-and `rtcpAddress` in MediaMTX and the `CAMERA_RTSP_PORT`/`CAMERA_RTP_PORT`/`CAMERA_RTCP_PORT`
-settings (or `srtAddress` for the SRT publishing port, default UDP 8890), plus your
-firewall. If `CAMERA_MEDIAMTX_ADDRESS` points to another machine, a local MediaMTX
+Changing the MediaMTX RTSP port requires matching `rtspAddress` in MediaMTX and
+`CAMERA_RTSP_PORT`; other MediaMTX ports (`rtpAddress`/`rtcpAddress`, `srtAddress`)
+only need matching firewall rules. If `CAMERA_MEDIAMTX_ADDRESS` points to another machine, a local MediaMTX
 is not needed. Restart after configuration or network-address changes.
 
 ### Publishing the stream
