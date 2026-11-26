@@ -3,12 +3,14 @@
 Emulate a fixed, read-only ONVIF camera on Raspberry Pi OS or another
 Linux host. Another device publishes an H.264 (optionally AAC) stream to MediaMTX
 over SRT, MediaMTX serves it over RTSP, and Node.js provides ONVIF Device/Media1 SOAP and
-WS-Discovery. No FFmpeg or mpv is needed on this host.
+WS-Discovery. FFmpeg is optional on this host: if installed, `ffprobe` detects the
+stream settings and `ffmpeg` serves snapshots.
 
 This is an ONVIF-compatible emulator, **not an ONVIF-certified device**. It supports
 one fixed profile, discovery, device information, UTC time, services/capabilities,
-source/encoder configuration queries, encoder options, and `GetStreamUri`.
-PTZ, events, snapshots, recording, and configuration writes are not implemented;
+source/encoder configuration queries, encoder options, `GetStreamUri`, and
+`GetSnapshotUri` (only when FFmpeg is installed).
+PTZ, events, recording, and configuration writes are not implemented;
 unsupported operations return SOAP faults.
 
 ## Quick start
@@ -56,28 +58,40 @@ explicitly on hosts with multiple interfaces.
 | `CAMERA_FIRMWARE_VERSION` | `version` in `package.json` | Firmware version reported by `GetDeviceInformation` |
 | `CAMERA_SERIAL_NUMBER` | derived from `CAMERA_ID` | Serial number reported by `GetDeviceInformation` |
 | `CAMERA_HARDWARE_ID` | onvif-camera | Hardware ID reported by `GetDeviceInformation` |
-| `CAMERA_WIDTH`, `CAMERA_HEIGHT` | `1920`, `1080` | Advertised resolution |
-| `CAMERA_FPS`, `CAMERA_BITRATE` | `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
-| `CAMERA_AUDIO` | `true` | Set `false` for video-only streams |
-| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | `128`, `44100` | Advertised AAC audio bitrate (kbit/s) and sample rate (Hz, for example `48000` or `44100`) |
-| `CAMERA_AUDIO_CHANNELS` | `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
+| `CAMERA_WIDTH`, `CAMERA_HEIGHT` | probed, else `1920`, `1080` | Advertised resolution |
+| `CAMERA_FPS`, `CAMERA_BITRATE` | probed, else `30`, `20000` | Advertised frame rate and video bitrate (kbit/s) |
+| `CAMERA_AUDIO` | probed, else `true` | Set `false` for video-only streams |
+| `CAMERA_AUDIO_BITRATE`, `CAMERA_AUDIO_SAMPLE_RATE` | probed, else `128`, `44100` | Advertised AAC audio bitrate (kbit/s) and sample rate (Hz, for example `48000` or `44100`) |
+| `CAMERA_AUDIO_CHANNELS` | probed, else `2` | Advertised audio channels: `1` (mono) or `2` (stereo) |
 | `CAMERA_PORT` | `8000` | SOAP TCP port |
-| `CAMERA_MEDIAMTX_ADDRESS` | `CAMERA_ADDRESS` | LAN IPv4 address of the MediaMTX server; may be another machine |
-| `CAMERA_RTSP_PORT` | `8554` | MediaMTX RTSP TCP port (`rtspAddress`), reported by `GetNetworkProtocols` |
-| `CAMERA_RTSP_PATH` | `camera` | MediaMTX path name of the stream |
+| `CAMERA_RTSP_URL` | `rtsp://CAMERA_ADDRESS:8554/camera` | `rtsp://` or `rtsps://` stream URL returned by `GetStreamUri`; may point to another machine. Do not embed credentials |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
 | `CAMERA_USERNAME`, `CAMERA_PASSWORD` | empty | Optional ONVIF UsernameToken digest credentials; set both |
 
-The ONVIF service does not probe the stream; it advertises the `CAMERA_*` values.
-Keep them aligned with what is published (H.264 Main video; optional stereo AAC,
-16-bit 44.1 kHz source encoded as 128 kbit/s AAC by default).
+If `ffprobe` is installed and any of `CAMERA_WIDTH`, `CAMERA_HEIGHT`, `CAMERA_FPS`,
+`CAMERA_BITRATE` or `CAMERA_AUDIO*` is unset, the stream at `CAMERA_RTSP_URL` is
+probed once at startup and the detected values are advertised. A stream without an
+audio track is advertised as video-only. Values set explicitly always win; values
+the stream does not report (RTSP rarely reports bitrates) or that are out of range
+fall back to the defaults. The stream must already be published when the service
+starts; otherwise, or without `ffprobe`, the configured or default values are
+advertised. Keep them aligned with what is published (H.264 Main video; optional
+stereo AAC, 16-bit 44.1 kHz source encoded as 128 kbit/s AAC by default).
 
-`GetStreamUri` returns `rtsp://CAMERA_MEDIAMTX_ADDRESS:CAMERA_RTSP_PORT/CAMERA_RTSP_PATH`.
-Changing the MediaMTX RTSP port requires matching `rtspAddress` in MediaMTX and
-`CAMERA_RTSP_PORT`; other MediaMTX ports (`rtpAddress`/`rtcpAddress`, `srtAddress`)
-only need matching firewall rules. If `CAMERA_MEDIAMTX_ADDRESS` points to another machine, a local MediaMTX
-is not needed. Restart after configuration or network-address changes.
+If `ffmpeg` is installed, `GetSnapshotUri` returns
+`http://CAMERA_ADDRESS:CAMERA_PORT/onvif/snapshot.jpg`, which serves a JPEG frame
+grabbed from `CAMERA_RTSP_URL` (shared between requests for up to one second).
+When ONVIF credentials are set, the snapshot URL also contains a secret derived
+from them, so it is only obtainable through an authenticated `GetSnapshotUri`.
+Without `ffmpeg`, snapshots are disabled. On Raspberry Pi OS, install both tools
+with `sudo apt install ffmpeg`.
+
+`GetStreamUri` returns `CAMERA_RTSP_URL`. Changing the MediaMTX RTSP port requires
+matching `rtspAddress` in MediaMTX and the port in `CAMERA_RTSP_URL`; other MediaMTX
+ports (`rtpAddress`/`rtcpAddress`, `srtAddress`) only need matching firewall rules.
+If `CAMERA_RTSP_URL` points to another machine, a local MediaMTX is not needed.
+Restart after configuration, stream or network-address changes.
 
 ### Publishing the stream
 
@@ -125,7 +139,7 @@ audio in the NVR's channel or recording settings.
 
 - Not every NVR supports an RTSP stream served from a different IP address than the
   ONVIF service. If yours does not, run MediaMTX on the same host and leave
-  `CAMERA_MEDIAMTX_ADDRESS` unset.
+  `CAMERA_RTSP_URL` unset.
 - Windows 10/11 cannot discover ONVIF cameras outside the local subnet: its
   WS-Discovery probe is sent with TTL=1, so it never crosses a router. Keep the
   camera on the same subnet as the Windows PC.
@@ -192,6 +206,6 @@ npm start
 ```
 
 Start MediaMTX separately. Node tests use
-local ephemeral HTTP listeners and require no media tools or physical Pi.
+local ephemeral HTTP listeners and require no media tools (FFmpeg) or physical Pi.
 An actual Raspberry Pi/NVR test is still needed for performance and
 client-specific compatibility.
