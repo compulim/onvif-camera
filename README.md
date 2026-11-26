@@ -83,6 +83,8 @@ stereo AAC, 16-bit 44.1 kHz source encoded as 128 kbit/s AAC by default).
 If `ffmpeg` is installed, `GetSnapshotUri` returns
 `http://CAMERA_ADDRESS:CAMERA_PORT/onvif/snapshot.jpg`, which serves a JPEG frame
 grabbed from `CAMERA_RTSP_URL` (shared between requests for up to one second).
+The frame is taken from the next keyframe, so a snapshot can take up to one
+keyframe interval (GOP) to return; keep the publisher's keyframe interval short.
 When ONVIF credentials are set, the snapshot URL also contains a secret derived
 from them, so it is only obtainable through an authenticated `GetSnapshotUri`.
 Without `ffmpeg`, snapshots are disabled. On Raspberry Pi OS, install both tools
