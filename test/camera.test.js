@@ -198,6 +198,28 @@ test('authentication decodes predefined and numeric XML escapes without allowing
   assert.throws(() => parseXml('<!DOCTYPE value [<!ENTITY x "expanded">]><value>&x;</value>'), /Invalid XML/);
 });
 
+test('verbose logging logs request and response bodies with status codes and redacts passwords', async t => {
+  assert.equal(config.verbose, false);
+  const verbose = { ...loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_VERBOSE: 'true' }), username: 'camera', password: 'unit-test-only' };
+  assert.equal(verbose.verbose, true);
+  const logs = [];
+  t.mock.method(console, 'log', message => logs.push(message));
+  const call = await serve(t, verbose);
+  const header = digestHeader(verbose.password, Buffer.from('verbose-nonce').toString('base64'), new Date().toISOString());
+  const { xml } = await call('GetProfiles', '', 'media', header);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(logs[0], /POST \/onvif\/media_service GetProfiles 200$/);
+  assert.match(logs[1], /^ONVIF request:\n.*<trt:GetProfiles>/s);
+  assert.match(logs[1], /<Password [^>]*>\*\*\*<\/Password>/);
+  assert.ok(!logs[1].includes(header.match(/>([^<]+)<\/Password>/)[1]));
+  assert.equal(logs[2], `ONVIF response 200:\n${xml}`);
+  logs.length = 0;
+  await call('GetProfiles');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(logs[0], / 401$/);
+  assert.match(logs[2], /^ONVIF response 401:\n.*NotAuthorized/s);
+});
+
 test('WS-Discovery correlates probes, filters scopes/types and advertises correct metadata', () => {
   const probe = (body = '') => `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Header><MessageID>urn:uuid:test</MessageID></s:Header><s:Body><Probe>${body}</Probe></s:Body></s:Envelope>`;
   assert.equal(matchesProbe(probe(), config), 'urn:uuid:test');
