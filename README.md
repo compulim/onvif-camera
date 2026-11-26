@@ -67,6 +67,7 @@ explicitly on hosts with multiple interfaces.
 | `CAMERA_RTSP_URL` | `rtsp://CAMERA_ADDRESS:8554/camera` | `rtsp://` or `rtsps://` stream URL returned by `GetStreamUri`; may point to another machine. Do not embed credentials |
 | `CAMERA_BIND` | `0.0.0.0` | SOAP listener address |
 | `CAMERA_DISCOVERY` | `true` | Enable IPv4 multicast discovery |
+| `CAMERA_VERBOSE` | `false` | Log SOAP request and response bodies with each request's HTTP status code; passwords are redacted |
 | `CAMERA_USERNAME`, `CAMERA_PASSWORD` | empty | Optional ONVIF UsernameToken digest credentials; set both |
 
 If `ffprobe` is installed and any of `CAMERA_WIDTH`, `CAMERA_HEIGHT`, `CAMERA_FPS`,

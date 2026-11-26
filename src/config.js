@@ -22,6 +22,7 @@ const defaults = {
   CAMERA_AUDIO_SAMPLE_RATE: '44100',
   CAMERA_AUDIO_CHANNELS: '2',
   CAMERA_DISCOVERY: 'true',
+  CAMERA_VERBOSE: 'false',
   CAMERA_USERNAME: '',
   CAMERA_PASSWORD: ''
 };
@@ -98,6 +99,7 @@ const fields = {
   CAMERA_AUDIO_SAMPLE_RATE: integer('CAMERA_AUDIO_SAMPLE_RATE', 8000, 96000),
   CAMERA_AUDIO_CHANNELS: integer('CAMERA_AUDIO_CHANNELS', 1, 2),
   CAMERA_DISCOVERY: flag('CAMERA_DISCOVERY'),
+  CAMERA_VERBOSE: flag('CAMERA_VERBOSE'),
   CAMERA_USERNAME: v.string(),
   CAMERA_PASSWORD: v.string()
 };
@@ -175,6 +177,7 @@ function loadConfig(env = process.env, interfaces = networkInterfaces(), probed 
     audioSampleRate: parsed.CAMERA_AUDIO_SAMPLE_RATE,
     audioChannels: parsed.CAMERA_AUDIO_CHANNELS,
     discovery: parsed.CAMERA_DISCOVERY,
+    verbose: parsed.CAMERA_VERBOSE,
     username: parsed.CAMERA_USERNAME,
     password: parsed.CAMERA_PASSWORD,
     serialNumber: parsed.CAMERA_SERIAL_NUMBER || uuid,

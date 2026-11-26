@@ -55,6 +55,11 @@ function snapshotPath(config) {
   return `/onvif/snapshot/${token}.jpg`;
 }
 
+// Hides WS-Security password digests from verbose logs.
+function redact(xml) {
+  return xml.replace(/(<(?:[\w.-]+:)?Password\b[^>]*>)[^<]*/g, '$1***');
+}
+
 function sameString(a, b) {
   return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 }
@@ -373,9 +378,15 @@ function createCameraServer(config, { snapshot } = {}) {
   const server = createServer(async (req, res) => {
     const remoteAddress = req.socket.remoteAddress;
     let operation;
+    let requestBody;
+    let responseBody;
     res.on('finish', () => {
       if (req.url !== '/health') {
         console.log(`ONVIF ${remoteAddress} ${req.method} ${req.url}${operation ? ` ${operation}` : ''} ${res.statusCode}`);
+        if (config.verbose) {
+          if (requestBody !== undefined) console.log(`ONVIF request:\n${redact(requestBody)}`);
+          if (responseBody !== undefined) console.log(`ONVIF response ${res.statusCode}:\n${responseBody}`);
+        }
       }
     });
     if (req.method === 'GET' && req.url === '/health') {
@@ -414,25 +425,26 @@ function createCameraServer(config, { snapshot } = {}) {
         }
         chunks.push(chunk);
       }
-      const document = v.parse(SoapEnvelopeSchema, parseXml(Buffer.concat(chunks).toString('utf8')));
+      requestBody = Buffer.concat(chunks).toString('utf8');
+      const document = v.parse(SoapEnvelopeSchema, parseXml(requestBody));
       const { Body: body, Header: header } = document.Envelope;
       const operations = Object.keys(body).filter(key => !key.startsWith('@_'));
       if (operations.length !== 1) throw new Error('Expected one SOAP operation');
       operation = operations[0];
       if (!(req.url === '/onvif/device_service' && operation === 'GetSystemDateAndTime') &&
           !authorized(header, config, nonces)) {
-        res.writeHead(401, { 'Content-Type': 'application/soap+xml; charset=utf-8' })
-          .end(fault('NotAuthorized', 'A fresh WS-Security UsernameToken digest is required'));
+        responseBody = fault('NotAuthorized', 'A fresh WS-Security UsernameToken digest is required');
+        res.writeHead(401, { 'Content-Type': 'application/soap+xml; charset=utf-8' }).end(responseBody);
         return;
       }
-      const payload = response(operation, body[operation], config, req.url === '/onvif/media_service', Boolean(snapshot));
-      res.writeHead(payload.includes('<s:Fault>') ? 500 : 200, {
+      responseBody = response(operation, body[operation], config, req.url === '/onvif/media_service', Boolean(snapshot));
+      res.writeHead(responseBody.includes('<s:Fault>') ? 500 : 200, {
         'Content-Type': 'application/soap+xml; charset=utf-8'
-      }).end(payload);
+      }).end(responseBody);
     } catch {
       if (!res.headersSent) {
-        res.writeHead(400, { 'Content-Type': 'application/soap+xml; charset=utf-8' })
-          .end(fault('InvalidArgVal', 'Malformed SOAP request'));
+        responseBody = fault('InvalidArgVal', 'Malformed SOAP request');
+        res.writeHead(400, { 'Content-Type': 'application/soap+xml; charset=utf-8' }).end(responseBody);
       }
     }
   });
