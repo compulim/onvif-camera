@@ -23,7 +23,7 @@ authInternalUsers:
         path: camera
 
 # RTSP serves the stream to ONVIF clients (GetStreamUri).
-# Keep rtspAddress in sync with CAMERA_RTSP_PORT. RTP must be even and RTCP
+# Keep rtspAddress in sync with the port in CAMERA_RTSP_URL. RTP must be even and RTCP
 # must be RTP + 1.
 rtsp: true
 rtspTransports: [udp, tcp]

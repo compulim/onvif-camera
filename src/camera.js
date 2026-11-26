@@ -1,3 +1,4 @@
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import * as v from 'valibot';
 import { authorized, envelope, fault, parseXml, TextSchema } from './soap.js';
@@ -44,6 +45,29 @@ function cameraScopes(config) {
 
 function deviceUrl(config) {
   return `http://${config.address}:${config.port}/onvif/device_service`;
+}
+
+// With ONVIF credentials, the snapshot URL contains a secret derived from them so
+// that it is only discoverable through an authenticated GetSnapshotUri.
+function snapshotPath(config) {
+  if (!config.username) return '/onvif/snapshot.jpg';
+  const token = createHmac('sha256', `${config.username}:${config.password}`).update(config.uuid).digest('hex').slice(0, 32);
+  return `/onvif/snapshot/${token}.jpg`;
+}
+
+function sameString(a, b) {
+  return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
+}
+
+function mediaUri(uri) {
+  return {
+    'trt:MediaUri': {
+      'tt:Uri': uri,
+      'tt:InvalidAfterConnect': 'false',
+      'tt:InvalidAfterReboot': 'false',
+      'tt:Timeout': 'PT0S'
+    }
+  };
 }
 
 function multicast() {
@@ -166,7 +190,7 @@ function capabilities(config) {
   };
 }
 
-function response(operation, rawArgs, config, media) {
+function response(operation, rawArgs, config, media, snapshot) {
   const ns = media ? 'trt' : 'tds';
   const wrap = (body = '') => envelope({ [`${ns}:${operation}Response`]: body });
   const parsed = v.safeParse(RequestSchema, rawArgs);
@@ -174,7 +198,7 @@ function response(operation, rawArgs, config, media) {
   const args = parsed.output;
   const date = new Date();
   if (media) {
-    if (['GetProfile', 'GetStreamUri'].includes(operation) && args.ProfileToken === undefined) {
+    if (['GetProfile', 'GetStreamUri', 'GetSnapshotUri'].includes(operation) && args.ProfileToken === undefined) {
       return fault('NoProfile', 'A profile token is required');
     }
     if (args.ProfileToken !== undefined && args.ProfileToken !== profileToken) {
@@ -209,14 +233,10 @@ function response(operation, rawArgs, config, media) {
             !['RTSP', 'TCP', 'UDP'].includes(args.StreamSetup?.Transport?.Protocol)) {
           return fault('InvalidArgVal', 'Only unicast RTSP streaming is supported');
         }
-        return wrap({
-          'trt:MediaUri': {
-            'tt:Uri': config.rtspUrl,
-            'tt:InvalidAfterConnect': 'false',
-            'tt:InvalidAfterReboot': 'false',
-            'tt:Timeout': 'PT0S'
-          }
-        });
+        return wrap(mediaUri(config.rtspUrl));
+      case 'GetSnapshotUri':
+        if (!snapshot) return fault('ActionNotSupported', 'Snapshots require FFmpeg on the ONVIF host');
+        return wrap(mediaUri(`http://${config.address}:${config.port}${snapshotPath(config)}`));
       case 'GetVideoSources':
         return wrap({
           'trt:VideoSources': {
@@ -259,7 +279,7 @@ function response(operation, rawArgs, config, media) {
       case 'GetServiceCapabilities':
         return wrap({
           'trt:Capabilities': {
-            '@_SnapshotUri': 'false',
+            '@_SnapshotUri': String(Boolean(snapshot)),
             '@_Rotation': 'false',
             '@_VideoSourceMode': 'false',
             '@_OSD': 'false',
@@ -346,8 +366,10 @@ function response(operation, rawArgs, config, media) {
   }
 }
 
-function createCameraServer(config) {
+// snapshot, if provided, is an async function that resolves to a JPEG Buffer.
+function createCameraServer(config, { snapshot } = {}) {
   const nonces = new Map();
+  const snapshotUrl = snapshotPath(config);
   const server = createServer(async (req, res) => {
     const remoteAddress = req.socket.remoteAddress;
     let operation;
@@ -358,6 +380,19 @@ function createCameraServer(config) {
     });
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok\n');
+      return;
+    }
+    if (snapshot && req.url.startsWith('/onvif/snapshot') && sameString(req.url, snapshotUrl)) {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { Allow: 'GET' }).end();
+        return;
+      }
+      try {
+        const jpeg = await snapshot();
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': jpeg.length, 'Cache-Control': 'no-store' }).end(jpeg);
+      } catch {
+        if (!res.headersSent) res.writeHead(503, { 'Content-Type': 'text/plain' }).end('Snapshot unavailable\n');
+      }
       return;
     }
     if (!['/onvif/device_service', '/onvif/media_service'].includes(req.url)) {
@@ -390,7 +425,7 @@ function createCameraServer(config) {
           .end(fault('NotAuthorized', 'A fresh WS-Security UsernameToken digest is required'));
         return;
       }
-      const payload = response(operation, body[operation], config, req.url === '/onvif/media_service');
+      const payload = response(operation, body[operation], config, req.url === '/onvif/media_service', Boolean(snapshot));
       res.writeHead(payload.includes('<s:Fault>') ? 500 : 200, {
         'Content-Type': 'application/soap+xml; charset=utf-8'
       }).end(payload);

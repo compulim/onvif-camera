@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { once } from 'node:events';
 import { test } from 'node:test';
 import { createCameraServer } from '../src/camera.js';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, unsetProbedKeys } from '../src/config.js';
 import { discoveryMessage, matchesProbe } from '../src/discovery.js';
+import { parseProbe } from '../src/media.js';
 import { XMLBuilder } from 'fast-xml-parser';
 import { authorized, parseXml } from '../src/soap.js';
 
@@ -48,19 +49,18 @@ test('configuration validates required settings and has a stable endpoint identi
   assert.equal(config.uuid, loadConfig({ CAMERA_ADDRESS: config.address }).uuid);
   assert.deepEqual([config.manufacturer, config.hardwareId], ['Raspberry Pi', 'onvif-camera']);
   assert.equal(config.firmwareVersion, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MEDIAMTX_ADDRESS: 'mediamtx.local' }), /CAMERA_MEDIAMTX_ADDRESS/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MEDIAMTX_ADDRESS: '127.0.0.1' }), /CAMERA_MEDIAMTX_ADDRESS/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_PORT: '70000' }), /CAMERA_RTSP_PORT/);
-  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_PATH: '/camera?x=1' }), /CAMERA_RTSP_PATH/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'http://192.168.1.30/camera' }), /CAMERA_RTSP_URL/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'rtsp://viewer:' + 'secret@192.168.1.30/camera' }), /CAMERA_RTSP_URL/);
+  assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'not a url' }), /CAMERA_RTSP_URL/);
+  assert.equal(loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_RTSP_URL: 'rtsps://camera.local/live' }).rtspPort, 322);
+  assert.equal(config.rtspPort, 8554);
   assert.throws(() => loadConfig({ CAMERA_ADDRESS: config.address, CAMERA_MODEL: 'x'.repeat(65) }), /CAMERA_MODEL/);
 });
 
 test('stream URL and device identity are configurable', async t => {
   const custom = loadConfig({
     CAMERA_ADDRESS: config.address,
-    CAMERA_MEDIAMTX_ADDRESS: '192.168.1.30',
-    CAMERA_RTSP_PORT: '554',
-    CAMERA_RTSP_PATH: 'live/cam1',
+    CAMERA_RTSP_URL: 'rtsp://192.168.1.30/live/cam1',
     CAMERA_MANUFACTURER: 'Acme',
     CAMERA_MODEL: 'Cam 1',
     CAMERA_FIRMWARE_VERSION: '2.3.4',
@@ -75,7 +75,7 @@ test('stream URL and device identity are configurable', async t => {
     ['Acme', 'Cam 1', '2.3.4', 'SN123', 'HW1']
   );
   const uri = await call('GetStreamUri', '<trt:ProfileToken>main</trt:ProfileToken><trt:StreamSetup><Stream>RTP-Unicast</Stream><Transport><Protocol>RTSP</Protocol></Transport></trt:StreamSetup>');
-  assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.30:554/live/cam1');
+  assert.equal(uri.body.GetStreamUriResponse.MediaUri.Uri, 'rtsp://192.168.1.30/live/cam1');
   const scopes = (await call('GetScopes', '', 'device')).body.GetScopesResponse.Scopes.map(scope => scope.ScopeItem);
   assert.ok(scopes.includes('onvif://www.onvif.org/hardware/Cam%201'));
 });
@@ -223,4 +223,93 @@ test('audio encoder settings are configurable', async t => {
   assert.equal(options.Encoding, 'AAC');
   assert.equal(Number(options.BitrateList.Items), 64);
   assert.equal(Number(options.SampleRateList.Items), 48);
+});
+
+test('stream settings probed by ffprobe fill only unset values', () => {
+  const probed = parseProbe(JSON.stringify({
+    streams: [
+      { codec_type: 'video', width: 1280, height: 720, avg_frame_rate: '30000/1001', r_frame_rate: '30/1' },
+      { codec_type: 'audio', sample_rate: '48000', channels: 1, bit_rate: '96000' }
+    ]
+  }));
+  assert.deepEqual(probed, {
+    CAMERA_WIDTH: '1280',
+    CAMERA_HEIGHT: '720',
+    CAMERA_FPS: '30',
+    CAMERA_AUDIO: 'true',
+    CAMERA_AUDIO_BITRATE: '96',
+    CAMERA_AUDIO_SAMPLE_RATE: '48000',
+    CAMERA_AUDIO_CHANNELS: '1'
+  });
+  const videoOnly = parseProbe(JSON.stringify({
+    streams: [{ codec_type: 'video', width: 640, height: 480, avg_frame_rate: '0/0', r_frame_rate: '15/1', bit_rate: '2000000' }]
+  }));
+  assert.deepEqual(videoOnly, { CAMERA_WIDTH: '640', CAMERA_HEIGHT: '480', CAMERA_FPS: '15', CAMERA_BITRATE: '2000', CAMERA_AUDIO: 'false' });
+  assert.throws(() => parseProbe(JSON.stringify({ streams: [{ codec_type: 'audio' }] })), /no video/);
+
+  const env = { CAMERA_ADDRESS: config.address, CAMERA_WIDTH: '1920', CAMERA_AUDIO_CHANNELS: '' };
+  assert.deepEqual(unsetProbedKeys(env), [
+    'CAMERA_HEIGHT', 'CAMERA_FPS', 'CAMERA_BITRATE', 'CAMERA_AUDIO',
+    'CAMERA_AUDIO_BITRATE', 'CAMERA_AUDIO_SAMPLE_RATE', 'CAMERA_AUDIO_CHANNELS'
+  ]);
+  const merged = loadConfig(env, {}, { ...probed, CAMERA_FPS: '120', CAMERA_ADDRESS: '192.168.1.99' });
+  assert.deepEqual(
+    [merged.width, merged.height, merged.fps, merged.audio, merged.audioSampleRate, merged.audioChannels, merged.address],
+    [1920, 720, 30, true, 48000, 1, config.address]
+  );
+  assert.equal(loadConfig(env, {}, videoOnly).audio, false);
+});
+
+test('snapshots are served only when a frame grabber is available', async t => {
+  const call = await serve(t);
+  const getSnapshotUri = '<trt:ProfileToken>main</trt:ProfileToken>';
+  assert.equal((await call('GetSnapshotUri', getSnapshotUri)).status, 500);
+  assert.equal((await call('GetServiceCapabilities')).body.GetServiceCapabilitiesResponse.Capabilities['@_SnapshotUri'], 'false');
+
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  let failing = false;
+  const server = createCameraServer(config, { snapshot: async () => {
+    if (failing) throw new Error('No stream');
+    return jpeg;
+  } }).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const soap = async (operation, body) => {
+    const res = await fetch(`${base}/onvif/media_service`, { method: 'POST', body: request(operation, body) });
+    return { status: res.status, body: parseXml(await res.text()).Envelope.Body };
+  };
+  assert.equal((await soap('GetServiceCapabilities')).body.GetServiceCapabilitiesResponse.Capabilities['@_SnapshotUri'], 'true');
+  assert.equal((await soap('GetSnapshotUri')).status, 500);
+  const uri = (await soap('GetSnapshotUri', getSnapshotUri)).body.GetSnapshotUriResponse.MediaUri.Uri;
+  assert.equal(uri, 'http://192.168.1.20:8000/onvif/snapshot.jpg');
+  const image = await fetch(`${base}/onvif/snapshot.jpg`);
+  assert.equal(image.status, 200);
+  assert.equal(image.headers.get('content-type'), 'image/jpeg');
+  assert.deepEqual(Buffer.from(await image.arrayBuffer()), jpeg);
+  assert.equal((await fetch(`${base}/onvif/snapshot.jpg`, { method: 'POST' })).status, 405);
+  failing = true;
+  const unavailable = await fetch(`${base}/onvif/snapshot.jpg`);
+  assert.equal(unavailable.status, 503);
+  await unavailable.text();
+});
+
+test('snapshot URL contains a secret when authentication is enabled', async t => {
+  const authenticated = { ...config, username: 'camera', password: 'unit-test-only' };
+  const server = createCameraServer(authenticated, { snapshot: async () => Buffer.from([0xff, 0xd8]) }).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const header = digestHeader(authenticated.password, Buffer.from('snapshot-nonce').toString('base64'), new Date().toISOString());
+  const res = await fetch(`${base}/onvif/media_service`, {
+    method: 'POST', body: request('GetSnapshotUri', '<trt:ProfileToken>main</trt:ProfileToken>', header)
+  });
+  assert.equal(res.status, 200);
+  const uri = new URL(parseXml(await res.text()).Envelope.Body.GetSnapshotUriResponse.MediaUri.Uri);
+  assert.match(uri.pathname, /^\/onvif\/snapshot\/[0-9a-f]{32}\.jpg$/);
+  assert.equal((await fetch(`${base}/onvif/snapshot.jpg`)).status, 404);
+  assert.equal((await fetch(`${base}/onvif/snapshot/${'0'.repeat(32)}.jpg`)).status, 404);
+  const image = await fetch(`${base}${uri.pathname}`);
+  assert.equal(image.status, 200);
+  await image.arrayBuffer();
 });
