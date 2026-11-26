@@ -91,6 +91,8 @@ function createSnapshot(url) {
     if (cached && Date.now() - cachedAt < snapshotMaxAge) return Promise.resolve(cached);
     pending ??= run('ffmpeg', [
       '-v', 'error',
+      // Joining mid-GOP yields gray frames until the next keyframe; decode keyframes only.
+      '-skip_frame', 'nokey',
       ...inputArgs(url),
       '-an',
       '-frames:v', '1',
